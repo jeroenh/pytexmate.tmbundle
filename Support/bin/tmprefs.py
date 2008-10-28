@@ -16,7 +16,7 @@ except:
 
 
 try:
-    from subprocess import Popen
+    from subprocess import Popen, PIPE, STDOUT
 except:
     PIPE = 1
     STDOUT=1
