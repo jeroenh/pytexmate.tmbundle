@@ -594,7 +594,7 @@ class TexMate(object):
             if stat != 0:
                 return stat
             stat = runProcess(['ps2pdf', self.outputNoSuffix+'.ps'])
-        if os.path.realpath(commandParser.outputFile) != os.path.realpath(self.outputNoSuffix+'.pdf'):
+        if commandParser.outputFile and os.path.realpath(commandParser.outputFile) != os.path.realpath(self.outputNoSuffix+'.pdf'):
             print '<p class="warning">Unexpected output file %s. Expected %s. Viewing, BibTeX and MkIndex may fail.</p>' % (commandParser.outputFile, self.outputNoSuffix+'.pdf')
             self.outputNoSuffix = os.path.splitext(commandParser.outputFile)[0]
             self.outputfile = os.path.join(os.path.dirname(self.inputfile), self.outputNoSuffix)
