@@ -1,25 +1,22 @@
 import sys
 import re
-import os.path
 import os
+import os.path
 import tmprefs
 from struct import *
-
-
-def percent_escape(str):
-	return re.sub('[\x80-\xff /&]', lambda x: '%%%02X' % unpack('B', x.group(0))[0], str)
+from xml.sax.saxutils import escape
+from urllib import quote
 
 def make_link(file, line):
-	return 'txmt://open?url=file:%2F%2F' + percent_escape(file) + '&amp;line=' + line
-
-def shell_quote(string):
-	return '"' + re.sub(r'([`$\\"])', r'\\\1', string) + '"'
-
+    """A custom version of urlparse.urlunparse()"""
+    file = os.path.realpath(os.path.join(os.getcwd(), file)) # make absolute, (works fine even if it was already absolute)
+    return 'txmt://open?url=file:%2F%2F' + quote(file, '') + '&amp;line=' + str(line)
 
 class TexParser(object):
     """Master Class for Parsing Tex Typsetting Streams"""
-    def __init__(self, input_stream, verbose):
-        super(TexParser, self).__init__()
+    def __init__(self, input_stream, verbose, fileName=None):
+        super(TexParser, self).__init__(self)
+        self.fileName = fileName
         self.input_stream = input_stream
         self.patterns = []
         self.done = False
@@ -27,24 +24,30 @@ class TexParser(object):
         self.numErrs = 0
         self.numWarns = 0
         self.isFatal = False
-        self.fileStack = []  #TODO: long term - can improve currentFile handling by keeping track of (xxx and )
-
+        self.numRuns = 0
+    
+    def setInput(self, input_stream):
+        self.input_stream = input_stream
+    
     def getRewrappedLine(self):
-        """Sometimes TeX breaks up lines with hard linebreaks.  This is annoying.
-           Even more annoying is that it sometime does not break line, for two distinct 
-           warnings. This function attempts to return a single statement."""
-        statement = ""
-        while True:
-            line = self.input_stream.readline()
-            if not line:
-                if statement: 
-                    return statement
-                else:
-                    return ""
-            statement += line.rstrip("\n")
-            if len(line) != 80: # including line break
+        """Return a line from the input. Subclasses can override this function to merge or split lines.
+        """
+        return self.input_stream.readline()
+    
+    def parseLine(self, line):
+        """Process a single line"""
+        
+        # process matching patterns until we find one
+        foundMatch = False
+        for pat,fun in self.patterns:
+            myMatch = pat.match(line)
+            if myMatch:
+                fun(myMatch,line)
+                sys.stdout.flush()
+                foundMatch = True
                 break
-        return statement+"\n"
+        if self.verbose and not foundMatch:
+            print escape(line)
     
     def parseStream(self):
         """Process the input_stream one line at a time, matching against
@@ -52,64 +55,77 @@ class TexParser(object):
            call the corresponding method in the dictionary.  The dictionary
            is organized with patterns as the keys and methods as the values."""
         line = self.getRewrappedLine()
+        
         while line and not self.done:
             line = line.rstrip("\n")
-            foundMatch = False
-
-            # process matching patterns until we find one
-            for pat,fun in self.patterns:
-                myMatch = pat.match(line)
-                if myMatch:
-                    fun(myMatch,line)
-                    sys.stdout.flush()
-                    foundMatch = True
-                    break
-            if self.verbose and not foundMatch:
-                print line
+            
+            self.parseLine(line)
             
             line = self.getRewrappedLine()
         if self.done == False:
             self.badRun()
+        if self.numRuns == 0:
+            self.numRuns = 1
         return self.isFatal, self.numErrs, self.numWarns
-
+    
     def info(self,m,line):
         print '<p class="info">'
-        print line
+        print escape(line)
         print '</p>'
-
+    
     def error(self,m,line):
         print '<p class="error">'
-        print line
+        print escape(line)
         print '</p>'
         self.numErrs += 1
-        
+    
     def warning(self,m,line):
         print '<p class="warning">'
-        print line
+        print escape(line)
         print '</p>'
         self.numWarns += 1
-
+    
     def warn2(self,m,line):
         print '<p class="fmtWarning">'
-        print line
+        print escape(line)
         print '</p>'
-        
+    
     def fatal(self,m,line):
         print '<p class="error">'
-        print line
+        print escape(line)
         print '</p>'
         self.isFatal = True
-
+    
     def badRun(self):
         """docstring for finishRun"""
         pass
-        
+    
+
+class MkIndexParser(TexParser):
+    """Parse and format Error Messages from makeindex"""
+    def __init__(self, btex, verbose, fileName=None):
+        super(MkIndexParser, self).__init__(btex,verbose,fileName)
+        self.patterns += [ 
+            (re.compile("Input index file (.*) not found") , self.noInputError)
+        ]
+    
+    def noInputError(self,m,line):
+        print '<p class="error">'
+        print escape(line)
+        print '</p>'
+        print '<p class="info">'
+        print "Make sure your latex file includes <code>\usepackage{makeidx} \makeindex</code> and run latex before running makeindex."
+        print '</p>'
+        self.numErrs += 1
+    
+
 class BibTexParser(TexParser):
     """Parse and format Error Messages from bibtex"""
-    def __init__(self, btex, verbose):
-        super(BibTexParser, self).__init__(btex,verbose)
+    def __init__(self, btex, verbose, fileName=None):
+        super(BibTexParser, self).__init__(btex,verbose,fileName)
         self.patterns += [ 
-            (re.compile("Warning--I didn't find a database entry") , self.warning),
+            (re.compile("Warning--(.*)") , self.warning),
+            (re.compile("--line (\d+) of file (.*)") , self.handleFileLineReference),
             (re.compile(r'I found no \\\w+ command') , self.error),
             (re.compile(r"I couldn't open style file"), self.error),
             (re.compile('This is BibTeX') , self.info),
@@ -118,88 +134,153 @@ class BibTexParser(TexParser):
             (re.compile('---') , self.finishRun)
         ]
     
+    def handleFileLineReference(self,m,line):
+        """Display warning. match m should contain file, line, warning message. Ideally, this line should be merged with the previous line, but this would require that getRewrappedLine also merges these lines."""
+        print '<p><a href="' + make_link(m.group(2),m.group(1)) + '">' + escape(line) + "</a></p>"
+        self.numWarns += 1
+    
     def finishRun(self,m,line):
         self.done = True
-        print '</div>'
+    
 
 class LaTexParser(TexParser):
     """Parse Output From Latex"""
-    def __init__(self, input_stream, verbose, fileName):
-        super(LaTexParser, self).__init__(input_stream,verbose)
-        self.suffix = fileName[fileName.rfind('.')+1:]
-        self.currentFile = fileName
+    def __init__(self, input_stream, verbose, fileName=None):
+        super(LaTexParser, self).__init__(input_stream,verbose,fileName)
+        self.outputFile = ""
+        self.fileStack = []
+        self.currentFile = ""
+        self.exts = set(['.tex']) # files with these extensions are displayed. Includes dot
+        if self.fileName and len(os.path.splitext(self.fileName)) > 1:
+            self.exts.add(os.path.splitext(self.fileName)[1]) # extension with dot
+        # NOTE: to support file names with accented chars, the line needs to be a Unicode string 
+        # instead of a binary string (e.g. u"line" instead of "line".) In addition, add the re.UNICODE 
+        # flag to each regexp. That would be sufficient for regexps with \w in the name. That does 
+        # not help for file names with spaces in the name. Also, I doubt that latex supports files 
+        # names with accented chars, especially because HFS+ uses NFD (decomposed) Unicode chars, 
+        # while most UNIX tools expect NFC (precombosed) chars.
         self.patterns += [
-            (re.compile('^This is') , self.info),
-            (re.compile('^Document Class') , self.info),
-            (re.compile('.*?\((\.\/[^\)]*?\.(tex|'+self.suffix+')( |$))') , self.detectNewFile),
+            (re.compile('This is') , self.info),
+            (re.compile('Document Class') , self.info),
             (re.compile('.*\<use (.*?)\>') , self.detectInclude),
-            (re.compile('^Output written') , self.info),
+            (re.compile('Output written on (.*) (\(.*\))') , self.outputInfo),
             (re.compile('LaTeX Warning:.*?input line (\d+)(\.|$)') , self.handleWarning),
             (re.compile('LaTeX Warning:.*') , self.warning),
-            (re.compile('^([^:]*):(\d+):\s+(pdfTeX warning.*)') , self.handleFileLineWarning),            
-            (re.compile('.*pdfTeX warning.*') , self.warning),            
-            (re.compile('LaTeX Font Warning:.*') , self.warning),            
+            (re.compile('([^:]*):(\d+):\s+(pdfTeX warning.*)') , self.handleFileLineWarning),
+            (re.compile('.*pdfTeX warning.*') , self.warning),
+            (re.compile('LaTeX Font Warning:.*') , self.warning),
             (re.compile('Overfull.*wide') , self.warn2),
-            (re.compile('Underfull.*badness') , self.warn2),                        
-            (re.compile('^([\.\/\w\x7f-\xff\- ]+(?:\.tex|\.'+self.suffix+')):(\d+):\s+(.*)') , self.handleError),
+            (re.compile('Underfull.*badness') , self.warn2),
             (re.compile('([^:]*):(\d+): LaTeX Error:(.*)') , self.handleError),
             (re.compile('([^:]*):(\d+): (Emergency stop)') , self.handleError),
+            (re.compile('.*?([^:]+\.\w+):(\d+):\s+(.*)') , self.handleError),
             (re.compile('Transcript written on (.*)\.$') , self.finishRun),
-            (re.compile('^Error: pdflatex') , self.pdfLatexError),
+            (re.compile('Error: pdflatex') , self.pdfLatexError),
             (re.compile('\!.*') , self.handleOldStyleErrors),
-            (re.compile('^\s+==>') , self.fatal)
+            (re.compile('\s+==>') , self.fatal)
         ]
         self.blankLine = re.compile(r'^\s*$')        
-
-    def detectNewFile(self,m,line):
-        self.currentFile = m.group(1).rstrip()
-        print "<h4>Processing: " + self.currentFile + "</h4>"
-
+    
+    def getRewrappedLine(self):
+        """Sometimes TeX breaks up lines with hard linebreaks.  This is annoying.
+           Even more annoying is that it sometime does not break line, for two distinct 
+           warnings. This function attempts to return a single statement.
+        """
+        statement = ""
+        while True:
+            line = self.input_stream.readline()
+            if not line: # EOF
+                return statement
+            statement += line.rstrip("\n")
+            if len(line) != 80: # continue the loop for lines of 80 chars incl. line break
+                break
+        return statement+"\n"
+    
+    def getLastFile(self):
+        """Returns the short name of the last file present in self.fileStack.
+        self.fileStack contains a lot of bogus and irrelevant entries.
+        e.g. 'verson 3.14 (Web2C)' or .clo, .sty, .ldf files instead of .tex files"""
+        # Typical matches: '', '.', '.\d+', '.\d+pt', '.aux', '.bbl', '.cfg', '.clo', '.cls', '.def', '.fd', '.ldf', '.out',  '.sty', '.tex', '.toc', 
+        lastfile = ""
+        for filename in reversed(self.fileStack):
+            if os.path.splitext(filename)[1] in self.exts:
+                return filename
+        return ""
+    
+    def parseLine(self, line):
+        """Process a single line"""
+        
+        # Find parsed file names
+        filematch = re.compile(r'([\(\)])([\w/\.\-]*)')  # matches '(filename.tex' or ')'
+        for (openclose, filename) in filematch.findall(line):
+            if openclose == '(':
+                self.fileStack.append(filename)
+                newfile = self.getLastFile() # see if this changes the "active" file
+                if newfile != self.currentFile:
+                    print "<h4>Processing: " + escape(newfile) + "</h4>"
+                    self.currentFile = newfile
+            elif len(self.fileStack) > 0:
+                self.fileStack.pop()
+                # self.currentFile = self.getLastFile()
+                newfile = self.getLastFile() # see if this changes the "active" file
+                if newfile != self.currentFile:
+                    print "<h4>Resume processing: " + escape(newfile) + "</h4>"
+                    self.currentFile = newfile
+        
+        # process matching patterns until we find one
+        TexParser.parseLine(self, line)
+    
     def detectInclude(self,m,line):
-        print "<ul><li>Including: " + m.group(1)
+        print "<ul><li>Including: " + escape(m.group(1))
         print "</li></ul>"
-
+    
     def handleWarning(self,m,line):
-        print '<p class="warning"><a href="' + make_link(os.path.join(os.getcwd(),self.currentFile), m.group(1)) + '">'+line+"</a></p>"
+        """Display warning. match m should contain line, warning message"""
+        print '<p class="warning"><a href="' + make_link(self.currentFile, m.group(1)) + '">'+escape(line)+"</a></p>"
         self.numWarns += 1
     
     def handleFileLineWarning(self,m,line):
         """Display warning. match m should contain file, line, warning message"""
-        print '<p class="warning"><a href="' + make_link(os.path.join(os.getcwd(), m.group(1)),m.group(2)) + '">' + m.group(3) + "</a></p>"
+        print '<p class="warning"><a href="' + make_link(m.group(1),m.group(2)) + '">' + escape(m.group(3)) + "</a></p>"
         self.numWarns += 1
     
     def handleError(self,m,line):
+        """Display error. match m should contain file, line, error message"""
         print '<p class="error">'
-        print 'Latex Error: <a  href="' + make_link(os.path.join(os.getcwd(),m.group(1)),m.group(2)) +  '">' + m.group(1)+":"+m.group(2) + '</a> '+m.group(3)+'</p>'
+        print 'Latex Error: <a  href="' + make_link(m.group(1),m.group(2)) +  '">' + escape(m.group(1)+":"+m.group(2)) + '</a> '+escape(m.group(3))+'</p>'
         self.numErrs += 1
-        
+    
     def finishRun(self,m,line):
         logFile = m.group(1).strip('"')
-        print '<p>  Complete transcript is in '
-        print '<a href="' + make_link(os.path.join(os.getcwd(),logFile),'1') +  '">' + logFile + '</a>'
+        print '<p>Complete transcript is in '
+        print '<a href="' + make_link(logFile,'1') +  '">' + escape(logFile) + '</a>'
         print '</p>'
         self.done = True
-        
+    
+    def outputInfo(self,m,line):
+        self.outputFile = m.group(1).strip('"')
+        print '<p class="info">Output written on <a href="%s">%s</a> (%s)</p>' % (self.outputFile, escape(m.group(1)), escape(m.group(2)))
+    
     def handleOldStyleErrors(self,m,line):
         if re.search('[Ee]rror', line):
             print '<p class="error">'
-            print line
+            print escape(line)
             print '</p>'
             self.numErrs += 1
         else:
             print '<p class="warning">'
-            print line
+            print escape(line)
             print '</p>'
             self.numWarns += 1
-        
+    
     def pdfLatexError(self,m,line):
         """docstring for pdfLatexError"""
         self.numErrs += 1
         print '<p class="error">'
-        print line
+        print escape(line)
         line = self.input_stream.readline()
         if line and re.match('^ ==> Fatal error occurred', line):  
-            print line.rstrip("\n")
+            print escape(line.rstrip("\n"))
             print '</p>'
             self.isFatal = True
         else:
@@ -208,17 +289,15 @@ class LaTexParser(TexParser):
     
     def badRun(self):
         """docstring for finishRun"""
-        print '<p class="error">A fatal error occured, log file is in '
-        logFile = os.path.basename(os.getenv('TM_FILEPATH'))
-        logFile = logFile.replace(self.suffix,'log')
-        print '<a href="' + make_link(os.path.join(os.getcwd(),logFile),'1') +  '">' + logFile + '</a>'        
-        print '</p>'
+        # logfile location is wrong for different output directory, but fixing this is not worth the effort.
+        logfile = os.path.splitext(self.fileName)[0]+'.log'
+        print '<p class="error">Output of program terminated prematurely. Logfile is in <a href="%s">%s</a></p>' % (make_link(logfile,1), escape(logfile))
+    
 
 class ParseLatexMk(TexParser):
     """docstring for ParseLatexMk"""
-    def __init__(self, input_stream, verbose,filename):
-        super(ParseLatexMk, self).__init__(input_stream,verbose)
-        self.fileName = filename
+    def __init__(self, input_stream, verbose,fileName=None):
+        super(ParseLatexMk, self).__init__(input_stream,verbose,fileName)
         self.patterns += [
             (re.compile('This is (pdfTeXk|latex2e|latex|XeTeXk)') , self.startLatex),
             (re.compile('This is BibTeX') , self.startBibtex),
@@ -227,25 +306,26 @@ class ParseLatexMk(TexParser):
             (re.compile('^Latexmk') , self.ltxmk),
             (re.compile('Run number') , self.newRun)
         ]
-        self.numRuns = 0
     
     def startBibtex(self,m,line):
         print '<div class="bibtex">'
-        print '<h3>' + line[:-1] + '</h3>'
+        print '<h3>' + escape(line[:-1]) + '</h3>'
         bp = BibTexParser(self.input_stream,self.verbose)
         f,e,w = bp.parseStream()
         self.numErrs += e
         self.numWarns += w
-
+        print '</div>'
+    
     def startLatex(self,m,line):
         print '<div class="latex">'
         print '<hr>'
-        print '<h3>' + line[:-1] + '</h3>'
+        print '<h3>' + escape(line[:-1]) + '</h3>'
         bp = LaTexParser(self.input_stream,self.verbose,self.fileName)
         f,e,w = bp.parseStream()
         self.numErrs += e
         self.numWarns += w
-
+        print '</div>'
+    
     def newRun(self,m,line):
         if self.numRuns > 0:
             print '<hr />'
@@ -253,19 +333,18 @@ class ParseLatexMk(TexParser):
         self.numWarns = 0
         self.numErrs = 0
         self.numRuns += 1
-
+    
     def finishRun(self,m,line):
         self.ltxmk(m,line)
         self.done = True
-
+    
     def ltxmk(self,m,line):
-        print '<p class="ltxmk">%s</p>'%line
-
+        print '<p class="ltxmk">%s</p>'%escape(line)
+    
 
 if __name__ == '__main__':
     # test
     stream = open('../tex/test.log')
     lp = LaTexParser(stream,False,"test.tex")
     f,e,w = lp.parseStream()
-    
 
