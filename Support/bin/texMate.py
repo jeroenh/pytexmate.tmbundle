@@ -440,6 +440,8 @@ class TexMate(object):
         - clean: remove all nonessential files, including the resuling PDF of DVI file.
         returns a result code. 0 means success.
         """
+        if action == "version":
+            self.do_version()
         #
         # print out header information to begin the run
         #
@@ -483,6 +485,10 @@ class TexMate(object):
         else:
             return 0
     
+    def do_version(self):
+        print runOutputProcess([self.engine, "--version"]).split("\n")[0]
+        sys.exit(0)
+          
     def do_latex(self):
         """Run latex command, and optionally display the result."""
         if self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatexmk:
