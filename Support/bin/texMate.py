@@ -667,7 +667,7 @@ class TexMate(object):
            For apps that support pdfsync search in pdf set up the command to go to the part of
            the page in the document the user was writing.
         """
-        vp = runOutputProcess(['find_app', self.viewer+".app"])
+        vp = runOutputProcess([os.getenv('TM_SUPPORT_PATH')+'/bin/find_app', self.viewer+".app"])
         syncPath = None
         if self.viewer == 'Skim' and vp:
             syncPath = vp + '/Contents/Resources/displayline ' + os.getenv('TM_LINE_NUMBER') + ' ' + pdfFile + ' ' + os.getenv('TM_FILEPATH')
@@ -701,7 +701,7 @@ class TexMate(object):
             pdfFile = self.outputNoSuffix+'.pdf' # relative path
             cmdPath,syncPath = self.findViewerPath(self.viewer, pdfFile)
             if cmdPath:
-                stat = runProcess(['check_open', self.viewer, pdfFile])
+                stat = runProcess([os.getenv('TM_BUNDLE_PATH')+'/Support/bin/check_open', self.viewer, pdfFile])
                 if stat == 3:
                     # technically: does not support the Apple Event to verify if a file is open.
                     print '<p class="error">%s does not support open file verification. It is likely that it does neither support refreshing of open files, so you may want to use another PDF viewer.</p>' % self.viewer
