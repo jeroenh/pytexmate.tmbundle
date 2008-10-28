@@ -17,7 +17,7 @@ class TexParser(object):
     def __init__(self, input_stream, verbose, fileName=None):
         super(TexParser, self).__init__(self)
         self.fileName = fileName
-        self.input_stream = input_stream
+        self.setInput(input_stream)
         self.patterns = []
         self.done = False
         self.verbose = verbose
@@ -28,11 +28,6 @@ class TexParser(object):
     
     def setInput(self, input_stream):
         self.input_stream = input_stream
-    
-    def getRewrappedLine(self):
-        """Return a line from the input. Subclasses can override this function to merge or split lines.
-        """
-        return self.input_stream.readline()
     
     def parseLine(self, line):
         """Process a single line"""
@@ -54,14 +49,14 @@ class TexParser(object):
            each pattern in the patterns dictionary.  If a pattern matches
            call the corresponding method in the dictionary.  The dictionary
            is organized with patterns as the keys and methods as the values."""
-        line = self.getRewrappedLine()
+        line = self.input_stream.readline()
         
         while line and not self.done:
             line = line.rstrip("\n")
             
             self.parseLine(line)
             
-            line = self.getRewrappedLine()
+            line = self.input_stream.readline()
         if self.done == False:
             self.badRun()
         if self.numRuns == 0:
@@ -135,6 +130,7 @@ class BibTexParser(TexParser):
         ]
     
     def handleFileLineReference(self,m,line):
+        # TODO: fix
         """Display warning. match m should contain file, line, warning message. Ideally, this line should be merged with the previous line, but this would require that getRewrappedLine also merges these lines."""
         print '<p><a href="' + make_link(m.group(2),m.group(1)) + '">' + escape(line) + "</a></p>"
         self.numWarns += 1
@@ -148,7 +144,10 @@ class LaTexParser(TexParser):
     def __init__(self, input_stream, verbose, fileName=None):
         super(LaTexParser, self).__init__(input_stream,verbose,fileName)
         self.outputFile = ""
-        self.fileStack = []
+        if fileName:
+            self.fileStack = [fileName]
+        else:
+            self.fileStack = []
         self.currentFile = ""
         self.exts = set(['.tex']) # files with these extensions are displayed. Includes dot
         if self.fileName and len(os.path.splitext(self.fileName)) > 1:
@@ -158,7 +157,7 @@ class LaTexParser(TexParser):
         # flag to each regexp. That would be sufficient for regexps with \w in the name. That does 
         # not help for file names with spaces in the name. Also, I doubt that latex supports files 
         # names with accented chars, especially because HFS+ uses NFD (decomposed) Unicode chars, 
-        # while most UNIX tools expect NFC (precombosed) chars.
+        # while most UNIX tools expect NFC (precomposed) chars.
         self.patterns += [
             (re.compile('This is') , self.info),
             (re.compile('Document Class') , self.info),
@@ -166,6 +165,7 @@ class LaTexParser(TexParser):
             (re.compile('Output written on (.*) (\(.*\))') , self.outputInfo),
             (re.compile('LaTeX Warning:.*?input line (\d+)(\.|$)') , self.handleWarning),
             (re.compile('LaTeX Warning:.*') , self.warning),
+            (re.compile('Package hyperref Warning:.*') , self.warning),
             (re.compile('([^:]*):(\d+):\s+(pdfTeX warning.*)') , self.handleFileLineWarning),
             (re.compile('.*pdfTeX warning.*') , self.warning),
             (re.compile('LaTeX Font Warning:.*') , self.warning),
@@ -181,20 +181,9 @@ class LaTexParser(TexParser):
         ]
         self.blankLine = re.compile(r'^\s*$')        
     
-    def getRewrappedLine(self):
-        """Sometimes TeX breaks up lines with hard linebreaks.  This is annoying.
-           Even more annoying is that it sometime does not break line, for two distinct 
-           warnings. This function attempts to return a single statement.
-        """
-        statement = ""
-        while True:
-            line = self.input_stream.readline()
-            if not line: # EOF
-                return statement
-            statement += line.rstrip("\n")
-            if len(line) != 80: # continue the loop for lines of 80 chars incl. line break
-                break
-        return statement+"\n"
+    def setInput(self, input_stream):
+        # Decorate input_stream with formatters that reformats the log lines to single log statements
+        self.input_stream = NoMultilineWarning(LinebreakWarning(NoLinebreak80(input_stream)))
     
     def getLastFile(self):
         """Returns the short name of the last file present in self.fileStack.
@@ -209,7 +198,6 @@ class LaTexParser(TexParser):
     
     def parseLine(self, line):
         """Process a single line"""
-        
         # Find parsed file names
         filematch = re.compile(r'([\(\)])([\w/\.\-]*)')  # matches '(filename.tex' or ')'
         for (openclose, filename) in filematch.findall(line):
@@ -341,6 +329,85 @@ class ParseLatexMk(TexParser):
     def ltxmk(self,m,line):
         print '<p class="ltxmk">%s</p>'%escape(line)
     
+
+class StreamWrapper(file):
+    """Sometimes TeX breaks up lines with hard linebreaks.  This is annoying.
+    Even more annoying is that it sometime does not break line, for two distinct 
+    warnings. This class decorates the stdin file object, and modifies the 
+    readline function to return more appropriate units (log statements rather than log lines).
+    """
+    def __init__(self,input_stream):
+        self.input_stream = input_stream
+    def readline(self):
+        return self.input_stream.readline()
+
+class NoLinebreak80(StreamWrapper):
+    """TeX inserts hard line breaks if the length of a line exceeds 80 chars.
+    This wrappers undos that behaviour by removing line breaks with lines of exactly 80 chars length"""
+    def readline(self):
+        statement = ""
+        while True:
+            line = self.input_stream.readline()
+            if not line: # EOF
+                return statement
+            if len(line) == 80: # continue the loop for lines of 80 chars incl. line break
+                statement += line.rstrip("\n")
+            else:
+                statement += line
+                break
+        return statement
+
+class LinebreakWarning(StreamWrapper):
+    """TeX often doesn't break a line. This wrapper tries to at least insert a line break 
+    before a warning or error. It matches line like 
+    sometext1234 pdfTeX warning (ext4): destination with the same identifier"""
+    def __init__(self,input_stream):
+        StreamWrapper.__init__(self,input_stream)
+        self.buffer = ""
+        self.pattern = re.compile('(.*[^a-zA-Z])([a-zA-Z]*[Tt]e[Xx] (?:warning|error).*)')
+    def readline(self):
+        if self.buffer != "":
+            statement = self.buffer
+            self.buffer = ""
+            return statement
+        line = self.input_stream.readline()
+        if not line: # EOF
+            return line
+        match = self.pattern.match(line)
+        if match:
+            self.buffer = match.group(2)
+            return match.group(1)
+        return line
+
+class NoMultilineWarning(StreamWrapper):
+    """Some package print a warning over multiple lines.
+    This wrapper makes those warning into one line. Continuation lines
+    are expected to start with multiple spaces. It matches warnings like:
+    LaTeX Warning: You have requested package `styles/cases',
+                   but the package provides `cases'."""
+    def __init__(self,input_stream):
+        StreamWrapper.__init__(self,input_stream)
+        self.buffer = ""
+    def getline(self):
+        if self.buffer != "":
+            line = self.buffer
+            self.buffer = ""
+            return line
+        else:
+            return self.input_stream.readline()
+    def readline(self):
+        statement = self.getline()
+        if not statement: # EOF
+            return statement
+        continuation = statement.startswith("LaTeX Warning")
+        while continuation:
+            line = self.getline()
+            if line.startswith("  "):
+                statement = statement.rstrip("\n")+" "+line.lstrip()
+            else:
+                break
+        return statement
+
 
 if __name__ == '__main__':
     # test
