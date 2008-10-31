@@ -720,7 +720,7 @@ class TexMate(object):
             else:
                 print '<strong class="error">', self.viewer, ' does not appear to be installed on your system.</strong>'
             if syncPath and usePdfSync:
-                print "<pre>"+syncPath+"</pre>"  ## DEBUG
+                # print "<pre>"+syncPath+"</pre>"  ## DEBUG
                 os.system(syncPath)
             elif not syncPath and usePdfSync:
                 print 'pdfsync is not supported for this viewer'
