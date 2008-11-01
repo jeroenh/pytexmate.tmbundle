@@ -236,6 +236,10 @@ class TexMate(object):
         #print "<pre>packages = %s</pre>" % self.ltxPackages
         self.viewer = self.tmPrefs['latexViewer']
         self.engine = self.constructEngineCommand()
+        if os.system(self.engine + " --help |grep -q synctex") == 0:
+            self.syncTexSupport = True
+        else:
+            self.syncTexSupport = False
         self.engineoptions = argumentStrToList(self.constructEngineOptions())
         self.outputNoSuffix = self.findOutputFile() # output file with relative path, without extension
         self.outputdir = os.path.dirname(self.outputNoSuffix)
@@ -451,6 +455,9 @@ class TexMate(object):
         print '<div id="preText">'
         if self.fileName == os.path.splitext(self.fileName)[0]:
             print "<h2 class='warning'>Warning:  Latex file has no extension.  See log for errors/warnings</h2>"
+        if self.syncTexSupport and 'pdfsync' in self.ltxPackages:
+            print "<p class='warning'>Warning:  %s supports synctex but you have included pdfsync. You can safely remove \usepackage{pdfsync}</p>" % self.engine
+        
         # Run the command passed on the command line or modified by preferences
         if action == "latex":
             self.do_latex()
@@ -696,7 +703,7 @@ class TexMate(object):
            If the viewer is an external viewer then ensure that it is installed and display the pdf
         """
         stat = 0
-        usePdfSync = ('pdfsync' in self.ltxPackages) # go to current line in PDF file
+        usePdfSync = ('pdfsync' in self.ltxPackages or self.syncTexSupport) # go to current line in PDF file
         if self.viewer != 'TextMate':
             pdfFile = self.outputNoSuffix+'.pdf' # relative path
             cmdPath,syncPath = self.findViewerPath(self.viewer, pdfFile)
@@ -713,7 +720,7 @@ class TexMate(object):
             else:
                 print '<strong class="error">', self.viewer, ' does not appear to be installed on your system.</strong>'
             if syncPath and usePdfSync:
-                #print "<pre>"+syncPath+"</pre>"  ## DEBUG
+                # print "<pre>"+syncPath+"</pre>"  ## DEBUG
                 os.system(syncPath)
             elif not syncPath and usePdfSync:
                 print 'pdfsync is not supported for this viewer'
@@ -737,6 +744,8 @@ class TexMate(object):
         In any case nonstopmode is set as is file-line-error-style.
         """
         opts = "-interaction=nonstopmode -file-line-error-style"
+        if self.syncTexSupport:
+            opts += " -synctex=1 "
         if 'TS-options' in self.tsDirs:
             opts += " " + self.tsDirs['TS-options']
         else:
