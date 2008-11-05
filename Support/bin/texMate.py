@@ -613,9 +613,9 @@ class TexMate(object):
             print '<p class="error">Error: Latexmk can not handle a different output directory.</p>'
         self.writeLatexmkRc()
         if self.engine == 'latex':
-            texCommand = ['latexmk.pl', '-pdfps', '-f', '-r', '/tmp/latexmkrc', self.fileName]
+            texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-pdfps', '-f', '-r', '/tmp/latexmkrc', self.fileName]
         else:
-            texCommand = ['latexmk.pl', '-pdf', '-f', '-r', '/tmp/latexmkrc', self.fileName]
+            texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-pdf', '-f', '-r', '/tmp/latexmkrc', self.fileName]
         commandParser = ParseLatexMk(None,self.verbose,self.fileName)
         stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
         self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
@@ -648,7 +648,7 @@ class TexMate(object):
     def run_latexmk_clean(self):
         """Use latexmk.pl to clean output files"""
         print '<h2>Clean output files of %s</h2>' % (self.fileName)
-        texCommand = ['latexmk.pl', '-CA', self.inputfile]
+        texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-CA', self.inputfile]
         commandParser = ParseLatexMk(None,self.verbose,self.fileName)
         stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
         self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
