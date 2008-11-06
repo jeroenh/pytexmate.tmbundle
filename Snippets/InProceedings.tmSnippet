@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>content</key>
+	<string>@inproceedings{$1,
+    author = {$2},
+    title = {$3},
+    Booktitle = {{$4}},
+    month = $5,
+    year = $6,
+    url = {$7},
+}</string>
+	<key>name</key>
+	<string>InProceedings</string>
+	<key>scope</key>
+	<string>text.bibtex</string>
+	<key>tabTrigger</key>
+	<string>inproceedings</string>
+	<key>uuid</key>
+	<string>646DBCDF-92B2-4AB0-8C1F-BB1E745C9453</string>
+</dict>
+</plist>

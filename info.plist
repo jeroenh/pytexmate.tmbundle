@@ -47,6 +47,7 @@
 			<string>B6CFC0AB-E9F1-4A8A-A1F2-AB129ACEDBF0</string>
 			<string>C51902AD-667E-4AFB-9BF6-A7A993473892</string>
 			<string>02459F02-DB4A-4439-B9FE-BAF4040ED287</string>
+			<string>FF50F02D-4857-404C-A3EA-CEE9120B690E</string>
 			<string>------------------------------------</string>
 			<string>DF9F9DF7-5F85-11D9-97D0-000D9332809C</string>
 			<string>------------------------------------</string>
@@ -240,6 +241,16 @@
 				<key>name</key>
 				<string>Format</string>
 			</dict>
+			<key>FF50F02D-4857-404C-A3EA-CEE9120B690E</key>
+			<dict>
+				<key>items</key>
+				<array>
+					<string>646DBCDF-92B2-4AB0-8C1F-BB1E745C9453</string>
+					<string>199411B0-ED86-4000-BD1B-C1A76A5A0966</string>
+				</array>
+				<key>name</key>
+				<string>BibTeX</string>
+			</dict>
 		</dict>
 	</dict>
 	<key>name</key>
@@ -353,6 +364,10 @@
 		<string>66F6C0FF-F105-4B89-8D56-EE8178EB57A0</string>
 		<string>0E51AD42-17AD-4507-950B-AB114408B58D</string>
 		<string>BDA02D31-3097-4726-9A93-7AAA4576F676</string>
+		<string>B345876F-1B84-4FF5-A19C-A62ADF121EC8</string>
+		<string>2CD70B5C-901A-4212-A3B8-4AC7D1065235</string>
+		<string>199411B0-ED86-4000-BD1B-C1A76A5A0966</string>
+		<string>646DBCDF-92B2-4AB0-8C1F-BB1E745C9453</string>
 	</array>
 	<key>uuid</key>
 	<string>46788DCE-6227-11D9-BFB1-000D93589AF6</string>
