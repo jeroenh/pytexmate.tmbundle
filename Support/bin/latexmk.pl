@@ -935,7 +935,7 @@ $do_cd = 0;     # Do not do cd to directory of source file.
                 #   Thus behave like latex.
 $dependents_list = 0;   # Whether to display list(s) of dependencies
 @dir_stack = (); # Stack of pushed directories.
-$cleanup_mode = 0;      # No cleanup of nonessential LaTex-related files.
+$cleanup_mode = 2;      # No cleanup of nonessential LaTex-related files.
                         # $cleanup_mode = 0: no cleanup
                         # $cleanup_mode = 1: full cleanup 
                         # $cleanup_mode = 2: cleanup except for dvi,
