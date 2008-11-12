@@ -677,7 +677,7 @@ class TexMate(object):
         vp = runOutputProcess([os.getenv('TM_SUPPORT_PATH')+'/bin/find_app', self.viewer+".app"])
         syncPath = None
         if self.viewer == 'Skim' and vp:
-            syncPath = vp + '/Contents/Resources/displayline ' + os.getenv('TM_LINE_NUMBER') + ' ' + pdfFile + ' ' + os.getenv('TM_FILEPATH')
+            syncPath = vp + '/Contents/SharedSupport/displayline ' + os.getenv('TM_LINE_NUMBER') + ' ' + pdfFile + ' ' + os.getenv('TM_FILEPATH')
         elif self.viewer == 'TeXniscope' and vp:
             syncPath = vp + '/Contents/Resources/forward-search.sh ' + os.getenv('TM_LINE_NUMBER') + ' ' + os.getenv('TM_FILEPATH') + ' ' + pdfFile
         elif self.viewer == 'PDFView' and vp:
