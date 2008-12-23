@@ -657,7 +657,7 @@ class TexMate(object):
     def run_clean(self):
         # TODO: this does not remove aux files created using include/input
         print '<h2>Clean output  files of %s</h2>' % (self.fileName)
-        tempextensions = ['aux', 'bbl', 'blg', 'dvi', 'fdb_latexmk', 'idx', 'ilg', 'ind', 'log', 'out', 'pdf', 'ps', 'toc']
+        tempextensions = ['aux', 'bbl', 'blg', 'dvi', 'fdb_latexmk', 'glo', 'idx', 'ilg', 'ind', 'ist', 'log', 'out', 'pdfsync', 'pdf', 'ps', 'synctex.gz', 'toc']
         filecount = 0
         for extension in tempextensions:
             tempfile = self.outputfile + '.' + extension
