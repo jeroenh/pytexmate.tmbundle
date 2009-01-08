@@ -164,8 +164,9 @@ class LaTexParser(TexParser):
             (re.compile('.*\<use (.*?)\>') , self.detectInclude),
             (re.compile('Output written on (.*) (\(.*\))') , self.outputInfo),
             (re.compile('LaTeX Warning:.*?input line (\d+)(\.|$)') , self.handleWarning),
+            (re.compile('Package \w+ Warning:.*?input line (\d+)(\.|$)') , self.handleWarning),
             (re.compile('LaTeX Warning:.*') , self.warning),
-            (re.compile('Package hyperref Warning:.*') , self.warning),
+            (re.compile('Package \w+ Warning:.*') , self.warning),
             (re.compile('([^:]*):(\d+):\s+(pdfTeX warning.*)') , self.handleFileLineWarning),
             (re.compile('.*pdfTeX warning.*') , self.warning),
             (re.compile('LaTeX Font Warning:.*') , self.warning),
@@ -183,7 +184,8 @@ class LaTexParser(TexParser):
     
     def setInput(self, input_stream):
         # Decorate input_stream with formatters that reformats the log lines to single log statements
-        self.input_stream = NoMultilineWarning(LinebreakWarning(NoLinebreak80(input_stream)))
+        self.input_stream = NoMultilinePackageWarning(NoMultilineWarning(LinebreakWarning(NoLinebreak80(input_stream))))
+        # self.input_stream = input_stream
     
     def getLastFile(self):
         """Returns the short name of the last file present in self.fileStack.
@@ -380,7 +382,7 @@ class LinebreakWarning(StreamWrapper):
         return line
 
 class NoMultilineWarning(StreamWrapper):
-    """Some package print a warning over multiple lines.
+    """LaTeX sometimes prints a warning over multiple lines.
     This wrapper makes those warning into one line. Continuation lines
     are expected to start with multiple spaces. It matches warnings like:
     LaTeX Warning: You have requested package `styles/cases',
@@ -389,7 +391,7 @@ class NoMultilineWarning(StreamWrapper):
         StreamWrapper.__init__(self,input_stream)
         self.buffer = ""
     def getline(self):
-        if self.buffer != "":
+        if self.buffer:
             line = self.buffer
             self.buffer = ""
             return line
@@ -405,7 +407,41 @@ class NoMultilineWarning(StreamWrapper):
             if line.startswith("  "):
                 statement = statement.rstrip("\n")+" "+line.lstrip()
             else:
-                break
+                self.buffer = line
+                continuation = False
+        return statement
+
+
+class NoMultilinePackageWarning(StreamWrapper):
+    """Some packages print a warning over multiple lines.
+    This wrapper makes those warning into one line. Continuation lines
+    are expected to start with multiple spaces. It matches warnings like:
+    Package amsmath Warning: Cannot use `split' here;
+    (amsmath)                trying to recover with `aligned'
+    """
+    def __init__(self,input_stream):
+        StreamWrapper.__init__(self,input_stream)
+        self.buffer = ""
+        self.firstlinere = re.compile('Package (\w+) Warning:.*')
+    def getline(self):
+        if self.buffer != "":
+            line = self.buffer
+            self.buffer = ""
+            return line
+        else:
+            return self.input_stream.readline()
+    def readline(self):
+        statement = self.getline()
+        if not statement: # EOF
+            return statement
+        match = self.firstlinere.match(statement)
+        if match:
+            contstart = '('+match.group(1)+')'
+            line = self.getline()
+            if line.startswith(contstart):
+                statement = statement.rstrip("\n") + " " + line[len(contstart):].lstrip()
+            else:
+                self.buffer = line
         return statement
 
 
