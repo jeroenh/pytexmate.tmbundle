@@ -442,11 +442,16 @@ class NoMultilinePackageWarning(StreamWrapper):
         match = self.firstlinere.match(statement)
         if match:
             contstart = '('+match.group(1)+')'
+            continuation = True
+        else:
+            continuation = False
+        while continuation:
             line = self.getline()
             if line.startswith(contstart):
                 statement = statement.rstrip("\n") + " " + line[len(contstart):].lstrip()
             else:
                 self.buffer = line
+                continuation = False
         return statement
 
 
