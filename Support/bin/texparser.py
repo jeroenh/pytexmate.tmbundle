@@ -57,11 +57,14 @@ class TexParser(object):
             self.parseLine(line)
             
             line = self.input_stream.readline()
+        self.wrapup()
+        return self.isFatal, self.numErrs, self.numWarns
+    
+    def wrapup(self):
         if self.done == False:
             self.badRun()
         if self.numRuns == 0:
             self.numRuns = 1
-        return self.isFatal, self.numErrs, self.numWarns
     
     def info(self,m,line):
         print '<p class="info">'
@@ -118,11 +121,13 @@ class BibTexParser(TexParser):
     """Parse and format Error Messages from bibtex"""
     def __init__(self, btex, verbose, fileName=None):
         super(BibTexParser, self).__init__(btex,verbose,fileName)
+        self.numNobiblioErrs = 0
         self.patterns += [ 
             (re.compile("Warning--(.*)") , self.warning),
             (re.compile("--line (\d+) of file (.*)") , self.handleFileLineReference),
-            (re.compile(r'I found no \\\w+ command') , self.error),
+            (re.compile(r'I found no \\\w+ command') , self.warning),
             (re.compile(r"I couldn't open style file"), self.error),
+            (re.compile(r"I couldn't open \w+ file"), self.error),
             (re.compile('This is BibTeX') , self.info),
             (re.compile('The style') , self.info),            
             (re.compile('Database') , self.info),                        

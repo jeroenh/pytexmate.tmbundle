@@ -131,12 +131,17 @@ def runProcess(popenargs):
     """
     # Note that we can't use subprocess.call(), since that is only available for Python 2.4 and up (=Mac OS X.5 and up)
     #print "<pre>%s%s</pre>" % (popenargs[0], "".join(' "%s"' % arg for arg in popenargs[1:]))  ## DEBUG
-    resultcode = os.spawnvp(os.P_WAIT, popenargs[0], popenargs)
-    if resultcode < 0:
-        print "<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), -resultcode)
-    elif resultcode == 127:
-        print "<p class='error'>Program %s was not find in the current PATH</p>" % (escape(popenargs[0]))
-    return resultcode
+    result = ProcessResult()
+    result.exitcode = os.spawnvp(os.P_WAIT, popenargs[0], popenargs)
+    result.numRuns = 1
+    if result.exitcode < 0:
+        result.signalcode = -result.exitcode
+        result.exitcode = 0
+        print "<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), result.signalcode)
+    elif result.exitcode == 127:
+        print "<p class='error'>Program %s was not found in the current PATH</p>" % (escape(popenargs[0]))
+        result.numErrs += 1
+    return result
 
 def runOutputProcess(popenargs):
     """
@@ -150,9 +155,19 @@ def runOutputProcess(popenargs):
     stdout = os.popen(command, "r")
     return stdout.read()
 
+class ProcessResult(object):
+    def __init__(self):
+        self.exitcode   = None
+        self.signalcode = None
+        self.numErrs    = 0
+        self.numWarns   = 0
+        self.numRuns    = 0
+        self.isFatal    = False
+
 def runParsedProcess(popenargs, parser=None):
     """Run a program, and parse the output through a TexParser instance.
-    Returns the result code, or if the program is not found, or was killed, return -signalcode.
+    Returns a ProcessResult object with result code, or if the program is not found, or was killed, 
+    the signalcode.
     This numRuns, and error and warning counters are increased, as given by the parser instance.
     popenargs is a list of program and arguments. E.g. ["pdflatex", "document.tex"]
     """
@@ -166,32 +181,30 @@ def runParsedProcess(popenargs, parser=None):
     command += " 2>&1"
     #print "<pre>%s</pre>" % command  ## DEBUG
     stdout = os.popen(command)
+    result = ProcessResult()
     if parser:  # parser is a TexParser instance
         parser.setInput(stdout)  # the output of the subprocess is input for the parser.
-        isFatal,numErrs,numWarns = parser.parseStream()
-        numRuns  = parser.numRuns
+        result.isFatal,result.numErrs,result.numWarns = parser.parseStream()
+        result.numRuns  = parser.numRuns
     else:
-        isFatal,numErrs,numWarns = (False, 0, 0)
-        numRuns  = 1
+        result.isFatal,result.numErrs,result.numWarns = (False, 0, 0)
+        result.numRuns  = 1
     resultcode = stdout.close()  # Note: this only works for popen, not for popen4.
     if resultcode == None:       # the resultcode is NOT guaranteed to return anything at all.
         resultcode = 0
-    signal = (resultcode & 255)
-    returncode = resultcode >> 8
-    if signal:
-        resultcode = -signal
-    else:
-        resultcode = returncode
-    if isFatal:
+    result.signalcode = (resultcode & 255)
+    result.exitcode   = resultcode >> 8
+    if result.isFatal:
         print "<p class='error'>Fatal error while running %s</p>" % (escape(popenargs[0]))
-        resultcode = -1
-    if signal > 0:
-        print "<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), signal)
-    elif returncode == 127:
+        result.exitcode = -1
+    if result.signalcode > 0:
+        print "<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), result.signalcode)
+    elif result.exitcode == 127:
         print "<p class='error'>Program %s was not found in the current PATH</p>" % (escape(popenargs[0]))
-    elif returncode > 0:
-        print "<p class='error'>Program %s exited with error code %d</p>" % (escape(popenargs[0]), returncode)
-    return resultcode, numErrs, numWarns, numRuns
+        result.numErrs += 1
+    elif result.exitcode > 0:
+        print "<p class='error'>Program %s exited with error code %d</p>" % (escape(popenargs[0]), result.exitcode)
+    return result
 
 
 
@@ -519,6 +532,7 @@ class TexMate(object):
         if stat != 0:
             return
         self.numErrs, self.numWarns = (0,0) # reset warnings/errors
+        # only need to run bibtex if .aux file contains a line "\citation"
         stat = self.do_bibtex()
         if stat != 0:
             return
@@ -589,18 +603,26 @@ class TexMate(object):
         else:
             stat = self.run_clean()
     
+    def increaseWarningCounts(self, processresult):
+        self.numErrs  += processresult.numErrs
+        self.numWarns += processresult.numWarns
+        self.numRuns  += processresult.numRuns
+    
     def run_latex(self):
         """Run the flavor of latex specified by self.engine on self.inputfile"""
         print '<h2>Running %s on %s</h2>' % (self.engine,self.fileName)
         texCommand = [self.engine] + self.engineoptions + [self.fileName]
         commandParser = LaTexParser(None,self.verbose,self.fileName)
-        stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
-        self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
-        if (stat == 0) and self.engine == 'latex':  # only for latex, if no errors occured
-            stat = runProcess(['dvips', self.outputNoSuffix+'.dvi', ' -o ', self.outputNoSuffix+'.ps'])
-            if stat != 0:
-                return stat
-            stat = runProcess(['ps2pdf', self.outputNoSuffix+'.ps'])
+        result = runParsedProcess(texCommand, commandParser)
+        stat = result.exitcode - result.signalcode
+        self.increaseWarningCounts(result)
+        if (result.exitcode == 0) and self.engine == 'latex':  # only for latex, if no errors occured
+            result = runProcess(['dvips', self.outputNoSuffix+'.dvi', ' -o ', self.outputNoSuffix+'.ps'])
+            stat = result.exitcode
+            if result.exitcode != 0:
+                return result.exitcode
+            result = runProcess(['ps2pdf', self.outputNoSuffix+'.ps'])
+            stat = result.exitcode
         if commandParser.outputFile and os.path.realpath(commandParser.outputFile) != os.path.realpath(self.outputNoSuffix+'.pdf'):
             print '<p class="warning">Unexpected output file %s. Expected %s. Viewing, BibTeX and MkIndex may fail.</p>' % (commandParser.outputFile, self.outputNoSuffix+'.pdf')
             self.outputNoSuffix = os.path.splitext(commandParser.outputFile)[0]
@@ -617,8 +639,9 @@ class TexMate(object):
         else:
             texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-pdf', '-f', '-r', '/tmp/latexmkrc', self.fileName]
         commandParser = ParseLatexMk(None,self.verbose,self.fileName)
-        stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
-        self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
+        result = runParsedProcess(texCommand, commandParser)
+        stat = result.exitcode - result.signalcode
+        self.increaseWarningCounts(result)
         try:
             os.remove("/tmp/latexmkrc")
         except (IOError, OSError):
@@ -631,8 +654,13 @@ class TexMate(object):
         print '<h4>Processing: %s </h4>' % (os.path.basename(auxfile))
         texCommand = ['bibtex', auxfile]
         commandParser = BibTexParser(None,self.verbose,auxfile)
-        stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
-        self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
+        result = runParsedProcess(texCommand, commandParser)
+        if (result.exitcode == 2) and (result.numErrs == 0):
+            # only warnings, most likely about "I found no \citation commands"
+            # don't consider this an error.
+            result.exitcode = 0
+        stat = result.exitcode - result.signalcode
+        self.increaseWarningCounts(result)
         return stat
     
     def run_makeindex(self, idxfile):
@@ -641,8 +669,9 @@ class TexMate(object):
         print '<h4>Processing: %s </h4>' % (os.path.basename(idxfile))
         texCommand = ['makeindex', idxfile]
         commandParser = MkIndexParser(None,self.verbose,idxfile)
-        stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
-        self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
+        result = runParsedProcess(texCommand, commandParser)
+        stat = result.exitcode - result.signalcode
+        self.increaseWarningCounts(result)
         return stat
     
     def run_latexmk_clean(self):
@@ -650,8 +679,9 @@ class TexMate(object):
         print '<h2>Clean output files of %s</h2>' % (self.fileName)
         texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-CA', self.inputfile]
         commandParser = ParseLatexMk(None,self.verbose,self.fileName)
-        stat, numErrs, numWarns, numRuns = runParsedProcess(texCommand, commandParser)
-        self.numErrs += numErrs; self.numWarns += numWarns; self.numRuns += numRuns
+        result = runParsedProcess(texCommand, commandParser)
+        stat = result.exitcode - result.signalcode
+        self.increaseWarningCounts(result)
         return stat
     
     def run_clean(self):
@@ -708,12 +738,14 @@ class TexMate(object):
             pdfFile = self.outputNoSuffix+'.pdf' # relative path
             cmdPath,syncPath = self.findViewerPath(self.viewer, pdfFile)
             if cmdPath:
-                stat = runProcess([os.getenv('TM_BUNDLE_PATH')+'/Support/bin/check_open', self.viewer, pdfFile])
-                if stat == 3:
+                result = runProcess([os.getenv('TM_BUNDLE_PATH')+'/Support/bin/check_open', self.viewer, pdfFile])
+                stat = result.exitcode
+                if result.exitcode == 3:
                     # technically: does not support the Apple Event to verify if a file is open.
                     print '<p class="error">%s does not support open file verification. It is likely that it does neither support refreshing of open files, so you may want to use another PDF viewer.</p>' % self.viewer
-                if stat != 0:  # signal != 0 or return code != 0
-                    stat = runProcess(['/usr/bin/open', '-a', self.viewer+'.app', pdfFile])
+                if result.exitcode != 0:  # signal != 0 or return code != 0
+                    result = runProcess(['/usr/bin/open', '-a', self.viewer+'.app', pdfFile])
+                    stat = result.exitcode
                     self.refreshViewer(self.viewer,pdfFile)            
                 else:
                     print "<pre>refreshViewer</pre>"
