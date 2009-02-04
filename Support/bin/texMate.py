@@ -230,6 +230,7 @@ class TexMate(object):
         self.firstRun = firstRun
         # Get preferences from TextMate and local directives
         self.tmPrefs = tmprefs.Preferences()
+        self.keepLogWindow = self.tmPrefs['latexKeepLogWin']      
         self.tsDirs = self.find_TEX_directives()
         if self.tmPrefs['latexVerbose'] == 1:
             self.verbose = True
@@ -497,13 +498,12 @@ class TexMate(object):
         #
         # Decide what to do with the Latex & View log window   
         #
-        if not self.tmPrefs['latexKeepLogWin']:
-            if self.numErrs == 0 and self.numWarns == 0 and self.viewer != 'TextMate':
-                return 200
-            else:
-                return 0
-        else:
+        if (self.numErrs > 0) or (self.numWarns > 0):
+            self.keepLogWindow = True
+        if self.keepLogWindow:
             return 0
+        else:
+            return 200
     
     def do_version(self):
         print runOutputProcess([self.engine, "--version"]).split("\n")[0]
@@ -514,16 +514,14 @@ class TexMate(object):
         if self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatexmk:
             stat = self.run_latexmk()
             print '<p>%d Errors, %d Warnings in %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns)
-            if self.tmPrefs['latexAutoView'] and self.numErrs < 1:
-                stat = self.run_viewer()
+            self.do_view_result()
         elif self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionMake:
             self.do_make()
             # child takes care of display PDF and printing stats.
         else:  # self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatex:
             stat = self.run_latex()
             print '<p>%d Errors, %d Warnings in %d run.</p>' % (self.numErrs, self.numWarns, self.numRuns)
-            if self.tmPrefs['latexAutoView'] and self.numErrs < 1:
-                stat = self.run_viewer()
+            self.do_view_result()
     
     def do_make(self):
         """Run latex, bibtex and makeindex as many times as required to make a correct output file, and optionally display the result."""
@@ -540,7 +538,7 @@ class TexMate(object):
             stat = self.do_makeindex()
             if stat != 0:
                 return
-        numErrs, numWarns = (self.numErrs, self.numWarns)  # store warning/error coung
+        numErrs, numWarns = (self.numErrs, self.numWarns)  # store warning/error count
         stat = self.run_latex()
         if stat != 0:
             return
@@ -549,8 +547,7 @@ class TexMate(object):
         if stat != 0:
             return
         print '<p>%d Errors, %d Warnings after %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns)
-        if self.tmPrefs['latexAutoView'] and numErrs < 1:
-            stat = self.run_viewer()
+        self.do_view_result()
     
     def do_bibtex(self):
         """Run bibtex for all source files."""
@@ -592,9 +589,25 @@ class TexMate(object):
                 break
         return stat
     
+    def do_view_result(self):
+        """Display the resulting PDF of DVI file in a viewer, but only if no errors are present in the stats."""
+        if not self.tmPrefs['latexAutoView']:
+            return
+        if self.numErrs > 0:
+            ## print '<p class="error">Not updating viewer. LaTeX reported %d errors.</p>' % self.numErrs
+            return
+        elif self.viewer != 'TextMate':  # no error
+            stat = self.run_external_viewer()
+        elif (self.numWarns == 0) or (not self.tmPrefs['latexKeepLogWin']):  # viewer is TextMate
+            stat = self.run_texmate_viewer()
+        # else: there were warnings and the log window should be kept open: don't replace log with PDF result.
+    
     def do_view(self):
         """Display the resulting PDF of DVI file in a viewer."""
-        stat = self.run_viewer()
+        if self.viewer == 'TextMate':
+            stat = self.run_texmate_viewer()
+        else:
+            stat = self.run_external_viewer()
     
     def do_clean(self):
         """Remove all nonessential files, including the resuling PDF or DVI file."""
@@ -704,15 +717,16 @@ class TexMate(object):
            For apps that support pdfsync search in pdf set up the command to go to the part of
            the page in the document the user was writing.
         """
-        vp = runOutputProcess([os.getenv('TM_SUPPORT_PATH')+'/bin/find_app', self.viewer+".app"])
-        syncPath = None
-        if self.viewer == 'Skim' and vp:
-            syncPath = vp + '/Contents/SharedSupport/displayline ' + os.getenv('TM_LINE_NUMBER') + ' ' + pdfFile + ' ' + os.getenv('TM_FILEPATH')
-        elif self.viewer == 'TeXniscope' and vp:
-            syncPath = vp + '/Contents/Resources/forward-search.sh ' + os.getenv('TM_LINE_NUMBER') + ' ' + os.getenv('TM_FILEPATH') + ' ' + pdfFile
-        elif self.viewer == 'PDFView' and vp:
-            syncPath = '/Contents/MacOS/gotoline.sh ' + os.getenv('TM_LINE_NUMBER') + ' ' + pdfFile
-        return vp, syncPath
+        viewerPath = runOutputProcess([os.getenv('TM_SUPPORT_PATH')+'/bin/find_app', self.viewer+".app"])
+        syncCommand = None
+        if viewerPath:
+            if self.viewer == 'Skim':
+                syncCommand = [viewerPath + '/Contents/SharedSupport/displayline', str(os.getenv('TM_LINE_NUMBER')), pdfFile, os.getenv('TM_FILEPATH')]
+            elif self.viewer == 'TeXniscope':
+                syncCommand = [viewerPath + '/Contents/Resources/forward-search.sh', str(os.getenv('TM_LINE_NUMBER')), os.getenv('TM_FILEPATH'), + pdfFile]
+            elif self.viewer == 'PDFView':
+                syncCommand = [viewerPath + '/Contents/MacOS/gotoline.sh', str(os.getenv('TM_LINE_NUMBER')), pdfFile]
+        return viewerPath, syncCommand
     
     def refreshViewer(self,viewer,pdfFile):
         """Use Applescript to tell the viewer to reload"""
@@ -727,46 +741,49 @@ class TexMate(object):
             #print "<pre>/usr/bin/osascript -e 'tell document %s of application \"TeXShop\" to refreshpdf' </pre>" % shell_quote(pdfFile)  ## DEBUG
             os.system("/usr/bin/osascript -e " + """'tell application "TeXShop" to tell documents whose path is %s to refreshpdf' """ % shell_quote(pdfFile))
     
-    def run_viewer(self):
-        """If the viewer is textmate, then setup the proper urls and/or redirects to show the
-           pdf file in the html output window.
-           If the viewer is an external viewer then ensure that it is installed and display the pdf
+    def run_external_viewer(self):
+        """Open the PDF in an external viewer.
+           Ensure that the external viewer is installed and display the pdf.
         """
         stat = 0
         usePdfSync = ('pdfsync' in self.ltxPackages or self.syncTexSupport) # go to current line in PDF file
-        if self.viewer != 'TextMate':
-            pdfFile = self.outputNoSuffix+'.pdf' # relative path
-            cmdPath,syncPath = self.findViewerPath(self.viewer, pdfFile)
-            if cmdPath:
-                result = runProcess([os.getenv('TM_BUNDLE_PATH')+'/Support/bin/check_open', self.viewer, pdfFile])
+        pdfFile = self.outputNoSuffix+'.pdf' # relative path
+        cmdPath,syncCommand = self.findViewerPath(self.viewer, pdfFile)
+        if cmdPath:
+            result = runProcess([os.getenv('TM_BUNDLE_PATH')+'/Support/bin/check_open', self.viewer, pdfFile])
+            stat = result.exitcode
+            if result.exitcode == 3:
+                # technically: does not support the Apple Event to verify if a file is open.
+                print '<p class="error">%s does not support open file verification. It is likely that it does neither support refreshing of open files, so you may want to use another PDF viewer.</p>' % self.viewer
+            if result.exitcode != 0:  # signal != 0 or return code != 0
+                result = runProcess(['/usr/bin/open', '-a', self.viewer+'.app', pdfFile])
                 stat = result.exitcode
-                if result.exitcode == 3:
-                    # technically: does not support the Apple Event to verify if a file is open.
-                    print '<p class="error">%s does not support open file verification. It is likely that it does neither support refreshing of open files, so you may want to use another PDF viewer.</p>' % self.viewer
-                if result.exitcode != 0:  # signal != 0 or return code != 0
-                    result = runProcess(['/usr/bin/open', '-a', self.viewer+'.app', pdfFile])
-                    stat = result.exitcode
-                    self.refreshViewer(self.viewer,pdfFile)            
-                else:
-                    print "<pre>refreshViewer</pre>"
+                self.refreshViewer(self.viewer,pdfFile)            
             else:
-                print '<strong class="error">', self.viewer, ' does not appear to be installed on your system.</strong>'
-            if syncPath and usePdfSync:
-                # print "<pre>"+syncPath+"</pre>"  ## DEBUG
-                os.system(syncPath)
-            elif not syncPath and usePdfSync:
-                print 'pdfsync is not supported for this viewer'
-        
+                print "<pre>refreshViewer</pre>"
         else:
-            tmHref = '<p><a href="tm-file://'+quote(self.outputfile+'.pdf')+'">Click Here to View</a></p>'
-            if (numErrs < 1 and numWarns < 1) or (numErrs < 1 and numWarns > 0 and not self.tmPrefs['latexKeepLogWin']):
-                print '<script type="text/javascript">'
-                print 'window.location="tm-file://'+quote(self.outputfile+'.pdf')+'"'
-                print '</script>'
-        # Check status of running the viewer
+            print '<p class="error">', self.viewer, ' does not appear to be installed on your system.</p>'
+        if usePdfSync:
+            if syncCommand:
+                # print "<pre>"+syncCommand+"</pre>"  ## DEBUG
+                result = runProcess(syncCommand)
+            else:
+                print 'pdfsync is not supported for this viewer'
         if stat != 0:
             print '<p class="error"><strong>error number %d opening viewer</strong></p>' % stat
         return stat
+    
+    def run_texmate_viewer(self):
+        """View the PDF in the TexMate log window.
+           Setup the proper urls and/or redirects to show the pdf file in the html output window.
+        """
+        stat = 0
+        tmHref = '<p><a href="tm-file://'+quote(self.outputfile+'.pdf')+'">Click Here to View</a></p>'
+        print '<script type="text/javascript">'
+        print 'window.location="tm-file://'+quote(self.outputfile+'.pdf')+'"'
+        print '</script>'
+        self.keepLogWindow = True
+        # Check status of running the viewer
     
     def constructEngineOptions(self):
         """Construct a string of command line options to pass to the typesetting engine
