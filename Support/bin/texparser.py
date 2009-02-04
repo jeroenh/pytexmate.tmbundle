@@ -197,7 +197,6 @@ class LaTexParser(TexParser):
         self.fileStack contains a lot of bogus and irrelevant entries.
         e.g. 'verson 3.14 (Web2C)' or .clo, .sty, .ldf files instead of .tex files"""
         # Typical matches: '', '.', '.\d+', '.\d+pt', '.aux', '.bbl', '.cfg', '.clo', '.cls', '.def', '.fd', '.ldf', '.out',  '.sty', '.tex', '.toc', 
-        lastfile = ""
         for filename in reversed(self.fileStack):
             if os.path.splitext(filename)[1] in self.exts:
                 return filename

@@ -62,7 +62,6 @@ def argumentStrToList(argumentline):
     # special chars:
     delimiter = [" ", "\t", "\n", "\r", u"\u000B", u"\u000C", u"\u0085", u"\u0029", u"\u0029"]
     quotes = ["'", '"']
-    hasarg = False
     curarg = ""
     prevch = ""
     quote  = ""
@@ -103,7 +102,7 @@ def parseOptions(argumentArray):
     # -output-directory directory       -> output-directory: directory
     # -halt-on-error                    -> halt-on-error: None
     # --result="FILENAME"               -> result: FILENAME
-    curopt=None
+    curoption=None
     options = {}
     arguments = []
     for argument in argumentArray:
@@ -329,7 +328,7 @@ class TexMate(object):
         
         return tsDirectives
     
-    def findTexPackages(self,fileName,depth=0):
+    def findTexPackages(self,fileName):
         """Find all packages included by the master file.
            or any file included from the master.  We should not have to go
            more than one level deep for preamble stuff.
@@ -712,7 +711,7 @@ class TexMate(object):
         print '<p class="info">Removed %d files</p>' % filecount
         return 0 # return OK status
     
-    def findViewerPath(self,viewer,pdfFile):
+    def findViewerPath(self,pdfFile):
         """Use the find_app command to ensure that the viewer is installed in the system
            For apps that support pdfsync search in pdf set up the command to go to the part of
            the page in the document the user was writing.
@@ -723,7 +722,7 @@ class TexMate(object):
             if self.viewer == 'Skim':
                 syncCommand = [viewerPath + '/Contents/SharedSupport/displayline', str(os.getenv('TM_LINE_NUMBER')), pdfFile, os.getenv('TM_FILEPATH')]
             elif self.viewer == 'TeXniscope':
-                syncCommand = [viewerPath + '/Contents/Resources/forward-search.sh', str(os.getenv('TM_LINE_NUMBER')), os.getenv('TM_FILEPATH'), + pdfFile]
+                syncCommand = [viewerPath + '/Contents/Resources/forward-search.sh', str(os.getenv('TM_LINE_NUMBER')), os.getenv('TM_FILEPATH'), pdfFile]
             elif self.viewer == 'PDFView':
                 syncCommand = [viewerPath + '/Contents/MacOS/gotoline.sh', str(os.getenv('TM_LINE_NUMBER')), pdfFile]
         return viewerPath, syncCommand
@@ -748,7 +747,7 @@ class TexMate(object):
         stat = 0
         usePdfSync = ('pdfsync' in self.ltxPackages or self.syncTexSupport) # go to current line in PDF file
         pdfFile = self.outputNoSuffix+'.pdf' # relative path
-        cmdPath,syncCommand = self.findViewerPath(self.viewer, pdfFile)
+        cmdPath,syncCommand = self.findViewerPath(pdfFile)
         if cmdPath:
             result = runProcess([os.getenv('TM_BUNDLE_PATH')+'/Support/bin/check_open', self.viewer, pdfFile])
             stat = result.exitcode
@@ -778,7 +777,7 @@ class TexMate(object):
            Setup the proper urls and/or redirects to show the pdf file in the html output window.
         """
         stat = 0
-        tmHref = '<p><a href="tm-file://'+quote(self.outputfile+'.pdf')+'">Click Here to View</a></p>'
+        # tmHref = '<p><a href="tm-file://'+quote(self.outputfile+'.pdf')+'">Click Here to View</a></p>'
         print '<script type="text/javascript">'
         print 'window.location="tm-file://'+quote(self.outputfile+'.pdf')+'"'
         print '</script>'
