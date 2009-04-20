@@ -513,14 +513,14 @@ class TexMate(object):
         if self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatexmk:
             stat = self.run_latexmk()
             print '<p>%d Errors, %d Warnings in %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns)
-            self.do_view_result()
+            self.view_result()
         elif self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionMake:
             self.do_make()
             # child takes care of display PDF and printing stats.
         else:  # self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatex:
             stat = self.run_latex()
             print '<p>%d Errors, %d Warnings in %d run.</p>' % (self.numErrs, self.numWarns, self.numRuns)
-            self.do_view_result()
+            self.view_result()
     
     def do_make(self):
         """Run latex, bibtex and makeindex as many times as required to make a correct output file, and optionally display the result."""
@@ -546,7 +546,7 @@ class TexMate(object):
         if stat != 0:
             return
         print '<p>%d Errors, %d Warnings after %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns)
-        self.do_view_result()
+        self.view_result()
     
     def do_bibtex(self):
         """Run bibtex for all source files."""
@@ -556,11 +556,16 @@ class TexMate(object):
         stat = 0
         # TODO: use smarter .aux find method
         auxfiles = [f for f in os.listdir(os.path.dirname(self.outputfile)) if re.search('.aux$',f) > 0]
-        auxfiles = [f for f in auxfiles if re.match(r'('+ os.path.basename(self.outputNoSuffix) +r'\.aux|bu\d+\.aux)',f)] # DEBUG : fails if basename if regexp. E.g. "abc-def"
+        auxfiles = [f for f in auxfiles if re.match(r'('+ os.path.basename(self.outputNoSuffix) +r'.*\.aux|bu\d+\.aux)',f)] # DEBUG : fails if basename if regexp. E.g. "abc-def"
         for bib in auxfiles:
             bib = os.path.join(os.path.dirname(self.outputNoSuffix), bib)
             stat = self.run_bibtex(bib)
-            if stat != 0:
+            # Meaning of bibtex exit codes:
+            # 0 = no problems found
+            # 1 = warnings only
+            # 2 = error
+            # 3 = fatal
+            if stat < 0 or stat > 1:
                 break
         if len(auxfiles) == 0:
             print '<p class="warning">No .aux files found for BibTeX</p>'
@@ -588,7 +593,7 @@ class TexMate(object):
                 break
         return stat
     
-    def do_view_result(self):
+    def view_result(self):
         """Display the resulting PDF of DVI file in a viewer, but only if no errors are present in the stats."""
         if not self.tmPrefs['latexAutoView']:
             return
@@ -670,7 +675,12 @@ class TexMate(object):
         if (result.exitcode == 2) and (result.numErrs == 0):
             # only warnings, most likely about "I found no \citation commands"
             # don't consider this an error.
-            result.exitcode = 0
+            result.exitcode = 1
+        # LaTeX exit codes:
+        # 0 = no problems found
+        # 1 = warnings only
+        # 2 = error
+        # 3 = fatal
         stat = result.exitcode - result.signalcode
         self.increaseWarningCounts(result)
         return stat
