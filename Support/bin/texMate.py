@@ -34,12 +34,17 @@
 #       Rubber: http://www.pps.jussieu.fr/~beffara/soft/rubber/
 #
 
+
+
 import sys
 import re
 import os
 import os.path
 import tmprefs
-from urllib import quote
+try:
+    from urllib.parse import quote  # python 3
+except ImportError:
+    from urllib import quote  # python 2
 from xml.sax.saxutils import escape
 from struct import *
 from texparser import *
@@ -60,7 +65,10 @@ def argumentStrToList(argumentline):
     backslashes into account. The goal is to mimmic the behaviour of the shell as closely as possible."""
     arguments = []
     # special chars:
-    delimiter = [" ", "\t", "\n", "\r", u"\u000B", u"\u000C", u"\u0085", u"\u0029", u"\u0029"]
+    try:
+        delimiter = [" ", "\t", "\n", "\r", "\u000B", "\u000C", "\u0085", "\u0029", "\u0029"]
+    except SyntaxError:
+        delimiter = [" ", "\t", "\n", "\r", u"\u000B", u"\u000C", u"\u0085", u"\u0029", u"\u0029"]
     quotes = ["'", '"']
     curarg = ""
     prevch = ""
@@ -136,9 +144,9 @@ def runProcess(popenargs):
     if result.exitcode < 0:
         result.signalcode = -result.exitcode
         result.exitcode = 0
-        print "<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), result.signalcode)
+        print("<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), result.signalcode))
     elif result.exitcode == 127:
-        print "<p class='error'>Program %s was not found in the current PATH</p>" % (escape(popenargs[0]))
+        print("<p class='error'>Program %s was not found in the current PATH</p>" % (escape(popenargs[0])))
         result.numErrs += 1
     return result
 
@@ -194,15 +202,15 @@ def runParsedProcess(popenargs, parser=None):
     result.signalcode = (resultcode & 255)
     result.exitcode   = resultcode >> 8
     if result.isFatal:
-        print "<p class='error'>Fatal error while running %s</p>" % (escape(popenargs[0]))
+        print("<p class='error'>Fatal error while running %s</p>" % (escape(popenargs[0])))
         result.exitcode = -1
     if result.signalcode > 0:
-        print "<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), result.signalcode)
+        print("<p class='error'>%s killed by signal %d</p>" % (escape(popenargs[0]), result.signalcode))
     elif result.exitcode == 127:
-        print "<p class='error'>Program %s was not found in the current PATH</p>" % (escape(popenargs[0]))
+        print("<p class='error'>Program %s was not found in the current PATH</p>" % (escape(popenargs[0])))
         result.numErrs += 1
     elif result.exitcode > 0:
-        print "<p class='error'>Program %s exited with error code %d</p>" % (escape(popenargs[0]), result.exitcode)
+        print("<p class='error'>Program %s exited with error code %d</p>" % (escape(popenargs[0]), result.exitcode))
     return result
 
 
@@ -278,8 +286,8 @@ class TexMate(object):
         startDir = os.path.dirname(texfile)
         filename = os.path.realpath(os.path.join(startDir, f))  # os.path.join also works fine if f is an absolute path.
         if not os.path.exists(filename):
-            print '<p class="error">Error: Input file %s does not exist</p>' % escape(f)
-            print '<p class="error">This is most likely a problem with TM_LATEX_MASTER</p>'
+            print('<p class="error">Error: Input file %s does not exist</p>' % escape(f))
+            print('<p class="error">This is most likely a problem with TM_LATEX_MASTER</p>')
             sys.exit(66) # EX_NOINPUT
         return filename
     
@@ -308,9 +316,9 @@ class TexMate(object):
                             foundNewRoot = True
                             newtf = os.path.realpath(os.path.join(startDir,m.group(2).rstrip()))
                             if newtf in rootChain:
-                                print "<p class='error'> There is a loop in your '%!TEX root =' directives.</p>"
-                                print "<p class='error'> chain = ",rootChain, "</p>"
-                                print "<p class='error'> exiting.</p>"                        
+                                print("<p class='error'> There is a loop in your '%!TEX root =' directives.</p>")
+                                print("<p class='error'> chain = ",rootChain, "</p>")
+                                print("<p class='error'> exiting.</p>")                        
                                 sys.exit(65) # EX_DATAERR
                             else:
                                 texfile = newtf
@@ -319,8 +327,8 @@ class TexMate(object):
                             tsDirectives['root'] = texfile
                         else:
                             tsDirectives[m.group(1)] = m.group(2).rstrip()
-            except (IOError, OSError),e:
-                print "<p class='error'>Can not open root file %s.</p>" % escape(texfile)
+            except (IOError, OSError) as e:
+                print("<p class='error'>Can not open root file %s.</p>" % escape(texfile))
                 sys.exit(66) # EX_NOINPUT
             f.close()
             if foundNewRoot == False:
@@ -360,7 +368,7 @@ class TexMate(object):
             inputList   = [x[2] for x in re.findall(r'([^%]|^)(\\input)\{([\w /\.\-]+)\}',texString)]
             packageList = [x[2] for x in re.findall(r'([^%]|^)\\usepackage(\[[\w, \-]+\])?\{([\w\-]+)\}',texString)]
         except (IOError, OSError):
-            print '<p class="warning">Warning: Could not open %s to check for packages</p>' % fileName
+            print('<p class="warning">Warning: Could not open %s to check for packages</p>' % fileName)
         for idx, fileName in enumerate(includeList):
             if not fileName.endswith('.tex'):
                 includeList[idx] += '.tex'
@@ -406,7 +414,7 @@ class TexMate(object):
             engine = self.tmPrefs['latexEngine']
         stat = os.system('type '+engine+' > /dev/null')
         if stat != 0:
-            print '<p class="error">Error: %s is not found, you need to install LaTeX or be sure that your PATH is setup properly.</p>' % engine
+            print('<p class="error">Error: %s is not found, you need to install LaTeX or be sure that your PATH is setup properly.</p>' % engine)
             sys.exit(69) # EX_UNAVAILABLE
         return engine
     
@@ -463,13 +471,13 @@ class TexMate(object):
         # print out header information to begin the run
         #
         if not self.firstRun:
-            print '<hr />'
-        print '<div id="commandOutput">'
-        print '<div id="preText">'
+            print('<hr />')
+        print('<div id="commandOutput">')
+        print('<div id="preText">')
         if self.fileName == os.path.splitext(self.fileName)[0]:
-            print "<h2 class='warning'>Warning:  Latex file has no extension.  See log for errors/warnings</h2>"
+            print("<h2 class='warning'>Warning:  Latex file has no extension.  See log for errors/warnings</h2>")
         if self.syncTexSupport and 'pdfsync' in self.ltxPackages:
-            print "<p class='warning'>Warning:  %s supports synctex but you have included pdfsync. You can safely remove \usepackage{pdfsync}</p>" % self.engine
+            print("<p class='warning'>Warning:  %s supports synctex but you have included pdfsync. You can safely remove \usepackage{pdfsync}</p>" % (self.engine))
         
         # Run the command passed on the command line or modified by preferences
         if action == "latex":
@@ -489,8 +497,8 @@ class TexMate(object):
             sys.stderr.write("Usage: "+sys.argv[0]+" tex-command firstRun\n")
             return 255
         
-        print '</div>'  # closes <div id="preText">
-        print '</div>'  # closes <div id="commandOutput"> 
+        print('</div>')  # closes <div id="preText">
+        print('</div>')  # closes <div id="commandOutput"> 
         if self.firstRun:
             # only need to include the javascript library once
             self.printButtons()
@@ -505,21 +513,21 @@ class TexMate(object):
             return 200
     
     def do_version(self):
-        print runOutputProcess([self.engine, "--version"]).split("\n")[0]
+        print(runOutputProcess([self.engine, "--version"]).split("\n")[0])
         sys.exit(0)
           
     def do_latex(self):
         """Run latex command, and optionally display the result."""
         if self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatexmk:
             stat = self.run_latexmk()
-            print '<p>%d Errors, %d Warnings in %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns)
+            print('<p>%d Errors, %d Warnings in %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns))
             self.view_result()
         elif self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionMake:
             self.do_make()
             # child takes care of display PDF and printing stats.
         else:  # self.tmPrefs['latexTypesetAction'] == tmprefs.typesetActionLatex:
             stat = self.run_latex()
-            print '<p>%d Errors, %d Warnings in %d run.</p>' % (self.numErrs, self.numWarns, self.numRuns)
+            print('<p>%d Errors, %d Warnings in %d run.</p>' % (self.numErrs, self.numWarns, self.numRuns))
             self.view_result()
     
     def do_make(self):
@@ -545,14 +553,14 @@ class TexMate(object):
         stat = self.run_latex()
         if stat != 0:
             return
-        print '<p>%d Errors, %d Warnings after %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns)
+        print('<p>%d Errors, %d Warnings after %d runs.</p>' % (self.numErrs, self.numWarns, self.numRuns))
         self.view_result()
     
     def do_bibtex(self):
         """Run bibtex for all source files."""
-        print '<h2>Running BibTeX on %s</h2>' % (os.path.basename(self.fileName))
+        print('<h2>Running BibTeX on %s</h2>' % (os.path.basename(self.fileName)))
         if self.outputdir != "" and len(self.ltxIncludes) > 0:
-            print '<p class="error">Error: BibTeX can\'t handle a different output directory (%s) in combination with \include{}. Use \input{} or output to the same directory.' % (self.outputdir)
+            print('<p class="error">Error: BibTeX can\'t handle a different output directory (%s) in combination with \include{}. Use \input{} or output to the same directory.' % (self.outputdir))
         stat = 0
         # TODO: use smarter .aux find method
         auxfiles = [f for f in os.listdir(os.path.dirname(self.outputfile)) if re.search('.aux$',f) > 0]
@@ -568,19 +576,19 @@ class TexMate(object):
             if stat < 0 or stat > 1:
                 break
         if len(auxfiles) == 0:
-            print '<p class="warning">No .aux files found for BibTeX</p>'
+            print('<p class="warning">No .aux files found for BibTeX</p>')
         return stat
     
     def do_makeindex(self):
         """Run makeindex for all source files."""
         stat = 0
-        print '<h2>Running MakeIndex on %s</h2>' % (os.path.basename(self.fileName))
+        print('<h2>Running MakeIndex on %s</h2>' % (os.path.basename(self.fileName)))
         # TODO: use smarter .idx find method
         try:
             texString = open(self.inputfile).read()
         except (IOError, OSError):
-            print '<p class="error">Error: Could not open %s to check for makeindex</p>' % self.inputfile
-            print '<p class="error">This is most likely a problem with TM_LATEX_MASTER</p>'
+            print('<p class="error">Error: Could not open %s to check for makeindex</p>' % self.inputfile)
+            print('<p class="error">This is most likely a problem with TM_LATEX_MASTER</p>')
             sys.exit(66) # EX_NOINPUT
         myList = [x[2] for x in re.findall(r'([^%]|^)\\makeindex(\[([\w]+)\])?',texString) if x[2] ]
         
@@ -627,7 +635,7 @@ class TexMate(object):
     
     def run_latex(self):
         """Run the flavor of latex specified by self.engine on self.inputfile"""
-        print '<h2>Running %s on %s</h2>' % (self.engine,self.fileName)
+        print('<h2>Running %s on %s</h2>' % (self.engine,self.fileName))
         texCommand = [self.engine] + self.engineoptions + [self.fileName]
         commandParser = LaTexParser(None,self.verbose,self.fileName)
         result = runParsedProcess(texCommand, commandParser)
@@ -641,15 +649,15 @@ class TexMate(object):
             result = runProcess(['ps2pdf', self.outputNoSuffix+'.ps'])
             stat = result.exitcode
         if commandParser.outputFile and os.path.realpath(commandParser.outputFile) != os.path.realpath(self.outputNoSuffix+'.pdf'):
-            print '<p class="warning">Unexpected output file %s. Expected %s. Viewing, BibTeX and MkIndex may fail.</p>' % (commandParser.outputFile, self.outputNoSuffix+'.pdf')
+            print('<p class="warning">Unexpected output file %s. Expected %s. Viewing, BibTeX and MkIndex may fail.</p>' % (commandParser.outputFile, self.outputNoSuffix+'.pdf'))
             self.outputNoSuffix = os.path.splitext(commandParser.outputFile)[0]
             self.outputfile = os.path.join(os.path.dirname(self.inputfile), self.outputNoSuffix)
         return stat
     
     def run_latexmk(self):
-        print '<h2>Running latexmk on %s</h2>' % (self.fileName)
+        print('<h2>Running latexmk on %s</h2>' % (self.fileName))
         if os.path.splitext(self.inputfile)[0] != self.outputfile:
-            print '<p class="error">Error: Latexmk can not handle a different output directory.</p>'
+            print('<p class="error">Error: Latexmk can not handle a different output directory.</p>')
         self.writeLatexmkRc()
         if self.engine == 'latex':
             texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-pdfps', '-f', '-r', '/tmp/latexmkrc', self.fileName]
@@ -668,7 +676,7 @@ class TexMate(object):
     def run_bibtex(self, auxfile):
         """Determine Targets and run bibtex"""
         # print '<h2>Running BibTeX on %s</h2>' % (os.path.basename(auxfile))
-        print '<h4>Processing: %s </h4>' % (os.path.basename(auxfile))
+        print('<h4>Processing: %s </h4>' % (os.path.basename(auxfile)))
         texCommand = ['bibtex', auxfile]
         commandParser = BibTexParser(None,self.verbose,auxfile)
         result = runParsedProcess(texCommand, commandParser)
@@ -688,7 +696,7 @@ class TexMate(object):
     def run_makeindex(self, idxfile):
         """Run the makeindex command"""
         # print '<h2>Running MakeIndex on %s</h2>' % (os.path.basename(idxfile))
-        print '<h4>Processing: %s </h4>' % (os.path.basename(idxfile))
+        print('<h4>Processing: %s </h4>' % (os.path.basename(idxfile)))
         texCommand = ['makeindex', idxfile]
         commandParser = MkIndexParser(None,self.verbose,idxfile)
         result = runParsedProcess(texCommand, commandParser)
@@ -698,7 +706,7 @@ class TexMate(object):
     
     def run_latexmk_clean(self):
         """Use latexmk.pl to clean output files"""
-        print '<h2>Clean output files of %s</h2>' % (self.fileName)
+        print('<h2>Clean output files of %s</h2>' % (self.fileName))
         texCommand = [os.getenv('TM_BUNDLE_SUPPORT') + '/bin/latexmk.pl', '-CA', self.inputfile]
         commandParser = ParseLatexMk(None,self.verbose,self.fileName)
         result = runParsedProcess(texCommand, commandParser)
@@ -708,7 +716,7 @@ class TexMate(object):
     
     def run_clean(self):
         # TODO: this does not remove aux files created using include/input
-        print '<h2>Clean output  files of %s</h2>' % (self.fileName)
+        print('<h2>Clean output  files of %s</h2>' % (self.fileName))
         tempextensions = ['aux', 'bbl', 'blg', 'dvi', 'fdb_latexmk', 'glo', 'idx', 'ilg', 'ind', 'ist', 'log', 'out', 'pdfsync', 'pdf', 'ps', 'synctex.gz', 'toc']
         filecount = 0
         for extension in tempextensions:
@@ -718,7 +726,7 @@ class TexMate(object):
                 filecount += 1
             except (IOError, OSError):
                 pass
-        print '<p class="info">Removed %d files</p>' % filecount
+        print('<p class="info">Removed %d files</p>' % filecount)
         return 0 # return OK status
     
     def findViewerPath(self,pdfFile):
@@ -739,7 +747,7 @@ class TexMate(object):
     
     def refreshViewer(self,viewer,pdfFile):
         """Use Applescript to tell the viewer to reload"""
-        print '<p class="info">Telling %s to Refresh %s...</p>'%(viewer,pdfFile)
+        print('<p class="info">Telling %s to Refresh %s...</p>'%(viewer,pdfFile))
         if viewer == 'Skim':
             #print "<pre>/usr/bin/osascript -e 'tell application \"Skim\" to revert document %s' </pre>" % shell_quote(pdfFile)  ## DEBUG
             os.system("/usr/bin/osascript -e " + """'tell application "Skim" to revert (documents whose path is %s)' """ % shell_quote(pdfFile))
@@ -763,23 +771,23 @@ class TexMate(object):
             stat = result.exitcode
             if result.exitcode == 3:
                 # technically: does not support the Apple Event to verify if a file is open.
-                print '<p class="error">%s does not support open file verification. It is likely that it does neither support refreshing of open files, so you may want to use another PDF viewer.</p>' % self.viewer
+                print('<p class="error">%s does not support open file verification. It is likely that it does neither support refreshing of open files, so you may want to use another PDF viewer.</p>' % self.viewer)
             if result.exitcode != 0:  # signal != 0 or return code != 0
                 result = runProcess(['/usr/bin/open', '-a', self.viewer+'.app', pdfFile])
                 stat = result.exitcode
                 self.refreshViewer(self.viewer,pdfFile)            
             else:
-                print "<pre>refreshViewer</pre>"
+                print("<pre>refreshViewer</pre>")
         else:
-            print '<p class="error">', self.viewer, ' does not appear to be installed on your system.</p>'
+            print('<p class="error">', self.viewer, ' does not appear to be installed on your system.</p>')
         if usePdfSync:
             if syncCommand:
                 # print "<pre>"+syncCommand+"</pre>"  ## DEBUG
                 result = runProcess(syncCommand)
             else:
-                print 'pdfsync is not supported for this viewer'
+                print('pdfsync is not supported for this viewer')
         if stat != 0:
-            print '<p class="error"><strong>error number %d opening viewer</strong></p>' % stat
+            print('<p class="error"><strong>error number %d opening viewer</strong></p>' % stat)
         return stat
     
     def run_texmate_viewer(self):
@@ -788,9 +796,9 @@ class TexMate(object):
         """
         stat = 0
         # tmHref = '<p><a href="tm-file://'+quote(self.outputfile+'.pdf')+'">Click Here to View</a></p>'
-        print '<script type="text/javascript">'
-        print 'window.location="tm-file://'+quote(self.outputfile+'.pdf')+'"'
-        print '</script>'
+        print('<script type="text/javascript">')
+        print('window.location="tm-file://'+quote(self.outputfile+'.pdf')+'"')
+        print('</script>')
         self.keepLogWindow = True
         # Check status of running the viewer
     
@@ -818,9 +826,9 @@ class TexMate(object):
         rcFile.write("""$pdflatex = '%s %s ';\n""" % (self.engine, engineoptions))
         ## DEBUG:
         #print "<pre>/tmp/latexmkrc="
-        print """$latex = 'latex -interaction=nonstopmode -file-line-error-style %s  ';""" % engineoptions
-        print """$pdflatex = '%s -interaction=nonstopmode -file-line-error-style %s ';""" % (self.engine, engineoptions)
-        print "</pre>"
+        print("""$latex = 'latex -interaction=nonstopmode -file-line-error-style %s  ';""" % engineoptions)
+        print("""$pdflatex = '%s -interaction=nonstopmode -file-line-error-style %s ';""" % (self.engine, engineoptions))
+        print("</pre>")
         # rcFile.write("""$bibtex = 'bibtex "%%B"';\n""")
         # rcFile.write("""$dvips = 'dvips %O "%S" -o "%D"';\n""")
         # rcFile.write("""$dvipdf = 'dvipdf %O "%S" "%D"';\n""")
@@ -830,22 +838,22 @@ class TexMate(object):
     def printButtons(self):
         """Output buttons at the bottom of the window."""
         js = os.getenv('TM_BUNDLE_SUPPORT') + '/bin/texlib.js'
-        print '<script src="file://%s" type="text/javascript" charset="utf-8"></script>' % quote(js)
+        print('<script src="file://%s" type="text/javascript" charset="utf-8"></script>' % quote(js))
         
-        print '<div id="texActions">'
-        print '<input type="button" value="Re-Run %s" onclick="runLatex(); return false" />' % self.engine
-        print '<input type="button" value="Run BibTeX" onclick="runBibtex(); return false" />'
-        print '<input type="button" value="Run Makeindex" onclick="runMakeIndex(); return false" />'
-        print '<input type="button" value="Clean up" onclick="runClean(); return false" />'        
+        print('<div id="texActions">')
+        print('<input type="button" value="Re-Run %s" onclick="runLatex(); return false" />' % self.engine)
+        print('<input type="button" value="Run BibTeX" onclick="runBibtex(); return false" />')
+        print('<input type="button" value="Run Makeindex" onclick="runMakeIndex(); return false" />')
+        print('<input type="button" value="Clean up" onclick="runClean(); return false" />')        
         if self.viewer == 'TextMate':
-            print """<input type="button" value="view in TextMate" onclick="window.location='""" + 'tm-file://' + quote(self.outputfile+'.pdf') +"""'"/>"""
+            print("""<input type="button" value="view in TextMate" onclick="window.location='""" + 'tm-file://' + quote(self.outputfile+'.pdf') +"""'"/>""")
         else:
-            print '<input type="button" value="View in %s" onclick="runView(); return false" />' % self.viewer
-        print '<input type="button" value="Preferences…" onclick="runConfig(); return false" />'
-        print '<p>'
-        print '<input type="checkbox" id="hv_warn" name="fmtWarnings" onclick="makeFmtWarnVisible(); return false" />'
-        print '<label for="hv_warn">Show hbox,vbox Warnings </label></p>'            
-        print '</div>'
+            print('<input type="button" value="View in %s" onclick="runView(); return false" />' % self.viewer)
+        print('<input type="button" value="Preferences…" onclick="runConfig(); return false" />')
+        print('<p>')
+        print('<input type="checkbox" id="hv_warn" name="fmtWarnings" onclick="makeFmtWarnVisible(); return false" />')
+        print('<label for="hv_warn">Show hbox,vbox Warnings </label></p>')            
+        print('</div>')
 
 
 ###############################################################
