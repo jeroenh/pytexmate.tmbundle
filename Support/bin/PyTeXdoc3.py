@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import sys
 import os
@@ -84,7 +84,7 @@ def openIncludedFile(fname):
     elif os.path.exists(fname+'.tex'):
         return open(fname+'.tex','r')
     else:
-        print "Error:  Cannot open included file " + fname
+        print("Error:  Cannot open included file " + fname)
         return None
 
 ## Part 1
@@ -155,7 +155,7 @@ for line in docIndexFile:
             desc = lineFields[1]
             path = lineFields[2]
         except:
-            print "Error parsing line: ", line
+            print("Error parsing line: ", line)
             
         headings[currentHeading].append(key)
         if path.rfind('.sty') >= 0:
@@ -203,7 +203,7 @@ if cwPackage in pathDict:
 ## Print out the results in html/javascript
 ## The java script gives us the nifty expand collapse outline look
 ##
-print """
+print("""
 <style type="text/css"><!--
 .save{
    behavior:url(#default#savehistory);}
@@ -251,33 +251,33 @@ function dsp(loc){
 
 //-->
 </script>
-"""    
-print "<h1>Your Packages</h1>"
-print "<ul>"
+""")    
+print("<h1>Your Packages</h1>")
+print("<ul>")
 for p in mList:
-    print '<div id="mypkg">'
+    print('<div id="mypkg">')
     if p in pathDict:
-        print """<li><a href="javascript:TextMate.system('viewDoc.sh %s', null);" >%s</a>
-             </li> """%(pathDict[p],descDict[p])
+        print("""<li><a href="javascript:TextMate.system('viewDoc.sh %s', null);" >%s</a>
+             </li> """%(pathDict[p],descDict[p]))
     else:
-        print """<li>%s</li>"""%(p)
-    print '</div>'
-print "</ul>"
+        print("""<li>%s</li>"""%(p))
+    print('</div>')
+print("</ul>")
 
-print "<hr />"
-print "<h1>Packages Browser</h1>"
-print "<ul>"
+print("<hr />")
+print("<h1>Packages Browser</h1>")
+print("<ul>")
 for h in headings:
-    print '<li><a href="javascript:dsp(this)" class="dsphead" onclick="dsp(this)">%s</a></li>'%(h)
-    print '<div class="dspcont">'
-    print "<ul>"
+    print('<li><a href="javascript:dsp(this)" class="dsphead" onclick="dsp(this)">%s</a></li>'%(h))
+    print('<div class="dspcont">')
+    print("<ul>")
     for p in headings[h]:
         if os.path.exists(pathDict[p]):
-            print """<li><a href="javascript:TextMate.system('viewDoc.sh %s', null);">%s</a>
-                </li> """%(pathDict[p],descDict[p])
+            print("""<li><a href="javascript:TextMate.system('viewDoc.sh %s', null);">%s</a>
+                </li> """%(pathDict[p],descDict[p]))
         else:
-            print """<li>%s</li>"""%(p)
-    print "</ul>"
-    print '</div>'
-print "</ul>"
+            print("""<li>%s</li>"""%(p))
+    print("</ul>")
+    print('</div>')
+print("</ul>")
 

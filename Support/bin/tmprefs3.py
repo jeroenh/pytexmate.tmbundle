@@ -1,9 +1,15 @@
-#!/usr/bin/python
+from __future__ import unicode_literals
+try: 
+    str = unicode 
+except NameError: 
+    pass 
 
 import os
-#import newplistlib as plistlib
-import plistlib
+import newplistlib as plistlib
+#import plistlib
+import io
 import string
+
 
 # NIB constants:
 # latexTypesetAction radio buttons
@@ -95,32 +101,42 @@ class Preferences(object):
             plDict = Foundation.NSDictionary.dictionaryWithContentsOfFile_(os.environ["HOME"]+"/Library/Preferences/com.macromates.textmate.plist")
         else:   # TODO remove all this once everyone is on leopard
             os.system("plutil -convert xml1 \"$HOME/Library/Preferences/com.macromates.textmate.plist\" -o /tmp/tmltxprefs1.plist")
-            null_tt = "".join([chr(i) for i in range(256)])
-            non_printables = null_tt.translate(null_tt, string.printable)
-            plist_str = open('/tmp/tmltxprefs1.plist').read()
-            plist_str = plist_str.translate(null_tt,non_printables)
+            plist_str = open('/tmp/tmltxprefs1.plist', 'rt').read()
             try:
-                plDict = plistlib.readPlistFromString(plist_str)
-            except:
+                # python 2
+                null_tt = "".join([chr(i) for i in range(256)])
+                non_printables = null_tt.translate(null_tt, string.printable)
+                plist_str = plist_str.translate(null_tt,non_printables)
+            except TypeError:
+                # python 3
+                non_printables = [chr(i) for i in range(256) if chr(i) not in string.printable]
+                null_tt = dict(zip(non_printables, len(non_printables)*[None]))
+                plist_str = plist_str.translate(null_tt)
+            try:
+                # wrapper around string to make it a file object
+                plDict = plistlib.readPlistFromString(plist_str.encode('utf-8')) 
+            except ZeroDivisionError:
                 print('<p class="error">There was a problem reading the preferences file, continuing with defaults</p>')
             try:
                 os.remove("/tmp/tmltxprefs1.plist")
             except:
-                print '<p class="error">Problem removing temporary prefs file</p>'
+                print('<p class="error">Problem removing temporary prefs file</p>')
         return plDict
         
     def toDefString(self):
         """plist-formated string with preference values"""
+        # instr = plistlib.writePlistToString(self.defaults)
         instr = plistlib.writePlistToString(self.defaults)
         runObj = Popen('pl',shell=True,stdout=PIPE,stdin=PIPE,stderr=STDOUT,close_fds=True)
-        runObj.stdin.write(instr)
+        runObj.stdin.write(instr) # .encode("utf-8"))
         runObj.stdin.close()
         defstr = runObj.stdout.read()
+        defstr = defstr.decode("utf-8")
         return defstr.replace("\n","")
 
 if __name__ == '__main__':
     test = Preferences()
-    print "Preferences =", test.prefs
-    print "Defaults (plist) =", repr(test.toDefString())
+    print("Preferences =", test.prefs)
+    print("Defaults (plist) =", repr(test.toDefString()))
     
 

@@ -50,6 +50,11 @@ Parse Plist example:
     print(pl["aKey"])
 """
 
+from __future__ import unicode_literals
+try: 
+    str = unicode 
+except NameError: 
+    pass 
 
 __all__ = [
     "readPlist", "writePlist", "readPlistFromString", "writePlistToString",
@@ -60,7 +65,7 @@ __all__ = [
 
 import binascii
 import datetime
-from cStringIO import StringIO
+from io import BytesIO
 import re
 
 
@@ -70,8 +75,8 @@ def readPlist(pathOrFile):
     usually is a dictionary).
     """
     didOpen = 0
-    if isinstance(pathOrFile, (str, unicode)):
-        pathOrFile = open(pathOrFile)
+    if isinstance(pathOrFile, str):  # filename
+        pathOrFile = open(pathOrFile, 'rb')
         didOpen = 1
     p = PlistParser()
     rootObject = p.parse(pathOrFile)
@@ -85,7 +90,7 @@ def writePlist(rootObject, pathOrFile):
     file name or a (writable) file object.
     """
     didOpen = 0
-    if isinstance(pathOrFile, (str, unicode)):
+    if isinstance(pathOrFile, str):
         pathOrFile = open(pathOrFile, "w")
         didOpen = 1
     writer = PlistWriter(pathOrFile)
@@ -99,13 +104,16 @@ def writePlist(rootObject, pathOrFile):
 def readPlistFromString(data):
     """Read a plist data from a string. Return the root object.
     """
-    return readPlist(StringIO(data))
+    fObj = BytesIO() # wrapper around string to make it a file object
+    fObj.write(data)
+    fObj.seek(0)
+    return readPlist(fObj) 
 
 
 def writePlistToString(rootObject):
     """Return 'rootObject' as a plist-formatted string.
     """
-    f = StringIO()
+    f = BytesIO()
     writePlist(rootObject, f)
     return f.getvalue()
 
@@ -172,9 +180,9 @@ class DumbXMLWriter:
 
     def writeln(self, line):
         if line:
-            self.file.write(self.indentLevel * self.indent + line + "\n")
+            self.file.write((self.indentLevel * self.indent + line + "\n").encode('utf-8'))
         else:
-            self.file.write("\n")
+            self.file.write("\n".encode('utf-8'))
 
 
 # Contents should conform to a subset of ISO 8601
@@ -218,7 +226,7 @@ def _escapeAndEncode(text):
     text = text.replace("&", "&amp;")       # escape '&'
     text = text.replace("<", "&lt;")        # escape '<'
     text = text.replace(">", "&gt;")        # escape '>'
-    return text.encode("utf-8")             # encode as UTF-8
+    return text
 
 
 PLISTHEADER = """\
@@ -230,11 +238,11 @@ class PlistWriter(DumbXMLWriter):
 
     def __init__(self, file, indentLevel=0, indent="\t", writeHeader=1):
         if writeHeader:
-            file.write(PLISTHEADER)
+            file.write(PLISTHEADER.encode('utf-8'))
         DumbXMLWriter.__init__(self, file, indentLevel, indent)
 
     def writeValue(self, value):
-        if isinstance(value, (str, unicode)):
+        if isinstance(value, str):
             self.simpleElement("string", value)
         elif isinstance(value, bool):
             # must switch for bool before int, as bool is a
@@ -271,10 +279,10 @@ class PlistWriter(DumbXMLWriter):
 
     def writeDict(self, d):
         self.beginElement("dict")
-        items = d.items()
+        items = list(d.items())
         items.sort()
         for key, value in items:
-            if not isinstance(key, (str, unicode)):
+            if not isinstance(key, str):
                 raise TypeError("keys must be strings")
             self.simpleElement("key", key)
             self.writeValue(value)
@@ -297,7 +305,7 @@ class _InternalDict(dict):
         try:
             value = self[attr]
         except KeyError:
-            raise AttributeError, attr
+            raise AttributeError(attr)
         from warnings import warn
         warn("Attribute access from plist dicts is deprecated, use d[key] "
              "notation instead", PendingDeprecationWarning)
@@ -313,7 +321,7 @@ class _InternalDict(dict):
         try:
             del self[attr]
         except KeyError:
-            raise AttributeError, attr
+            raise AttributeError(attr)
         from warnings import warn
         warn("Attribute access from plist dicts is deprecated, use d[key] "
              "notation instead", PendingDeprecationWarning)
@@ -466,8 +474,8 @@ class PlistParser:
     def end_real(self):
         self.addObject(float(self.getData()))
     def end_string(self):
-        self.addObject(self.getData())
+        self.addObject(self.getData().decode('utf-8'))
     def end_data(self):
         self.addObject(Data.fromBase64(self.getData()))
     def end_date(self):
-        self.addObject(_dateFromString(self.getData()))
+        self.addObject(_dateFromString(self.getData().decode('utf-8')))
