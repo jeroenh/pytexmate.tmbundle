@@ -15,7 +15,7 @@ def make_link(file, line):
 class TexParser(object):
     """Master Class for Parsing Tex Typsetting Streams"""
     def __init__(self, input_stream, verbose, fileName=None):
-        super(TexParser, self).__init__(self)
+        super(TexParser, self).__init__()
         self.fileName = fileName
         self.setInput(input_stream)
         self.patterns = []
